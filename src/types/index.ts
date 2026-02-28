@@ -5,6 +5,8 @@ export interface User {
   passwordHash: string;
   role: 'user' | 'admin';
   createdAt: string;
+  lastLoginAt?: string;
+  lastLoginIp?: string;
 }
 
 export interface SharedChat {
@@ -12,9 +14,11 @@ export interface SharedChat {
   userId: string;
   userNickname: string;
   title: string;
+  description: string;
   markdown: string;
   source: 'claude' | 'gemini' | 'chatgpt' | 'unknown';
   plazaStatus: 'none' | 'pending' | 'approved' | 'rejected';
+  passcode: string;
   createdAt: string;
   updatedAt: string;
 }

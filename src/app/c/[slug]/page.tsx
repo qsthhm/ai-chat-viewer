@@ -5,7 +5,6 @@ import Link from 'next/link';
 import ChatRenderer from '@/components/ChatRenderer';
 import { ParsedChat } from '@/types';
 
-// Minimal client parser (same logic)
 function detectAndParse(raw: string): ParsedChat {
   if (/^\*\*You:\*\*/.test(raw.trim())) {
     const turns: ParsedChat['turns'] = [];
@@ -17,12 +16,9 @@ function detectAndParse(raw: string): ParsedChat {
     return { title: turns[0]?.content?.slice(0,40)||'对话', created:'', link:'', source:'chatgpt', turns };
   }
   if (/^## Prompt:/m.test(raw)) {
-    const titleM = raw.match(/^#\s+(.+)$/m);
-    const linkM = raw.match(/\*\*Link:\*\*\s+\[.+?\]\((.+?)\)/);
-    const link = linkM?linkM[1]:'';
-    let source: ParsedChat['source'] = link.includes('gemini')?'gemini':'claude';
-    const turns: ParsedChat['turns'] = [];
-    const parts = raw.split(/^## (Prompt|Response):/m);
+    const titleM = raw.match(/^#\s+(.+)$/m); const linkM = raw.match(/\*\*Link:\*\*\s+\[.+?\]\((.+?)\)/);
+    const link = linkM?linkM[1]:''; let source: ParsedChat['source'] = link.includes('gemini')?'gemini':'claude';
+    const turns: ParsedChat['turns'] = []; const parts = raw.split(/^## (Prompt|Response):/m);
     let i = 1;
     while(i<parts.length){
       const type=parts[i]; const c=(parts[i+1]||'').trim(); const lines=c.split('\n');
@@ -43,15 +39,49 @@ export default function SharedChatPage() {
   const [data, setData] = useState<ParsedChat|null>(null);
   const [notFound, setNotFound] = useState(false);
   const [nickname, setNickname] = useState('');
+  const [description, setDescription] = useState('');
+  // Passcode states
+  const [needPasscode, setNeedPasscode] = useState(false);
+  const [passTitle, setPassTitle] = useState('');
+  const [passcode, setPasscode] = useState('');
+  const [passError, setPassError] = useState('');
 
-  useEffect(() => {
-    fetch(`/api/chats/${slug}`).then(async r => {
-      if (!r.ok) { setNotFound(true); return; }
+  const fetchChat = (code?: string) => {
+    const url = code ? `/api/chats/${slug}?passcode=${code}` : `/api/chats/${slug}`;
+    fetch(url).then(async r => {
       const d = await r.json();
+      if (r.status === 404) { setNotFound(true); return; }
+      if (d.needPasscode) { setNeedPasscode(true); setPassTitle(d.chat?.title||''); return; }
+      if (!r.ok && code) { setPassError('口令不正确'); return; }
+      if (!r.ok) { setNotFound(true); return; }
+      setNeedPasscode(false);
       setData(detectAndParse(d.chat.markdown));
       setNickname(d.chat.userNickname || '');
+      setDescription(d.chat.description || '');
     }).catch(() => setNotFound(true));
-  }, [slug]);
+  };
+
+  useEffect(() => { fetchChat(); }, [slug]);
+
+  // Passcode screen
+  if (needPasscode) return (
+    <div className="min-h-dvh flex items-center justify-center p-4 bg-surface-50">
+      <div className="max-w-xs w-full text-center">
+        <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-brand-500 to-brand-300 flex items-center justify-center mx-auto mb-5 shadow-lg">
+          <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+        </div>
+        <h2 className="font-serif font-semibold text-lg mb-1">{passTitle || '受保护的对话'}</h2>
+        <p className="text-sm text-surface-400 mb-6">请输入4位口令查看</p>
+        <input value={passcode} onChange={e=>setPasscode(e.target.value.replace(/[^a-zA-Z0-9]/g,'').slice(0,4))} placeholder="输入口令" maxLength={4}
+          className="w-full px-4 py-3 rounded-xl border border-surface-200 focus:border-brand-400 outline-none text-center text-lg font-mono tracking-[0.3em] mb-3"
+          onKeyDown={e=>{if(e.key==='Enter'&&passcode.length===4){setPassError('');fetchChat(passcode);}}}/>
+        {passError && <p className="text-red-500 text-xs mb-3">{passError}</p>}
+        <button onClick={()=>{setPassError('');fetchChat(passcode);}} disabled={passcode.length!==4}
+          className="w-full py-2.5 rounded-xl bg-brand-500 text-white text-sm font-semibold hover:bg-brand-600 disabled:opacity-40 shadow-sm">确认</button>
+        <Link href="/" className="block mt-4 text-sm text-surface-400 hover:text-brand-500">返回首页</Link>
+      </div>
+    </div>
+  );
 
   if (notFound) return (
     <div className="min-h-dvh flex items-center justify-center p-4">
@@ -81,7 +111,10 @@ export default function SharedChatPage() {
             <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-brand-500 to-brand-300 flex items-center justify-center flex-shrink-0">
               <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" className="w-3.5 h-3.5"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
             </div>
-            <h2 className="font-serif font-semibold text-[0.92rem] truncate">{data.title}</h2>
+            <div className="min-w-0">
+              <h2 className="font-serif font-semibold text-[0.92rem] truncate">{data.title}</h2>
+              {description && <p className="text-[0.68rem] text-surface-400 truncate">{description}</p>}
+            </div>
           </div>
           <Link href="/" className="px-3 py-1.5 rounded-lg border border-surface-200 text-surface-500 hover:border-brand-400 hover:text-brand-500 text-xs font-medium transition-colors">首页</Link>
         </div>

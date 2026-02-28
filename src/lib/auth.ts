@@ -28,7 +28,6 @@ export function verifyToken(token: string): JwtPayload | null {
 export function getTokenFromRequest(req: NextRequest): string | null {
   const auth = req.headers.get('authorization');
   if (auth?.startsWith('Bearer ')) return auth.slice(7);
-  // Also check cookies
   const cookie = req.cookies.get('token');
   return cookie?.value || null;
 }
@@ -49,4 +48,31 @@ export function requireAdmin(req: NextRequest): JwtPayload {
   const user = requireAuth(req);
   if (user.role !== 'admin') throw new Error('FORBIDDEN');
   return user;
+}
+
+export function getClientIp(req: NextRequest): string {
+  return req.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
+    || req.headers.get('x-real-ip')
+    || 'unknown';
+}
+
+/**
+ * Validate nickname:
+ * - 2~16 chars
+ * - Only Chinese, letters, numbers, underscores, hyphens
+ * - No pure numbers, no common reserved words
+ */
+export function validateNickname(name: string): string | null {
+  const n = name.trim();
+  if (n.length < 2) return '昵称至少2个字符';
+  if (n.length > 16) return '昵称最多16个字符';
+  if (!/^[\u4e00-\u9fa5a-zA-Z0-9_\-]+$/.test(n)) return '昵称只能包含中文、字母、数字、下划线和短横线';
+  if (/^\d+$/.test(n)) return '昵称不能是纯数字';
+  const reserved = ['admin','administrator','管理员','超级管理员','系统','system','root','test','null','undefined','官方','客服','support'];
+  if (reserved.includes(n.toLowerCase())) return '该昵称为系统保留名称';
+  return null;
+}
+
+export function validatePasscode(code: string): boolean {
+  return /^[a-zA-Z0-9]{4}$/.test(code);
 }

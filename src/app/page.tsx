@@ -28,13 +28,10 @@ function detectAndParse(raw: string, filename?: string): ParsedChat {
     return { title: turns[0]?.content?.slice(0, 40) || '对话', created: '', link: '', source: 'chatgpt', turns };
   }
   if (/^## Prompt:/m.test(raw)) {
-    const titleM = raw.match(/^#\s+(.+)$/m);
-    const createdM = raw.match(/\*\*Created:\*\*\s+(.+)/);
-    const linkM = raw.match(/\*\*Link:\*\*\s+\[.+?\]\((.+?)\)/);
-    const link = linkM ? linkM[1] : '';
+    const titleM = raw.match(/^#\s+(.+)$/m); const createdM = raw.match(/\*\*Created:\*\*\s+(.+)/);
+    const linkM = raw.match(/\*\*Link:\*\*\s+\[.+?\]\((.+?)\)/); const link = linkM ? linkM[1] : '';
     let source: ParsedChat['source'] = link.includes('gemini.google.com') ? 'gemini' : 'claude';
-    const turns: ParsedChat['turns'] = [];
-    const parts = raw.split(/^## (Prompt|Response):/m);
+    const turns: ParsedChat['turns'] = []; const parts = raw.split(/^## (Prompt|Response):/m);
     let i = 1;
     while (i < parts.length) {
       const type = parts[i]; const content = (parts[i+1]||'').trim(); const lines = content.split('\n');
@@ -45,8 +42,7 @@ function detectAndParse(raw: string, filename?: string): ParsedChat {
         turns.push({role:'user',ts,content:body.join('\n').trim(),file});
       } else {
         let si = tsM ? 1 : (lines[0]?.trim()===''?1:0);
-        let b = lines.slice(si).join('\n').trim().replace(/\n+---\s*\nPowered by.*/s,'').replace(/^Gemini 说\s*\n-{2,}\s*\n?/,'').trim();
-        turns.push({role:'assistant',ts,content:b});
+        turns.push({role:'assistant',ts,content:lines.slice(si).join('\n').trim().replace(/\n+---\s*\nPowered by.*/s,'').replace(/^Gemini 说\s*\n-{2,}\s*\n?/,'').trim()});
       }
       i+=2;
     }
@@ -56,17 +52,29 @@ function detectAndParse(raw: string, filename?: string): ParsedChat {
 }
 
 export default function HomePage() {
-  const { user } = useAuth();
+  const { user, login, register } = useAuth();
   const { show: toast } = useToast();
   const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
   const [chatData, setChatData] = useState<ParsedChat|null>(null);
   const [rawMd, setRawMd] = useState('');
   const [viewing, setViewing] = useState(false);
+  // Share modal
   const [shareOpen, setShareOpen] = useState(false);
   const [publishToPlaza, setPublishToPlaza] = useState(false);
+  const [shareDesc, setShareDesc] = useState('');
+  const [sharePasscode, setSharePasscode] = useState('');
   const [sharing, setSharing] = useState(false);
   const [shareUrl, setShareUrl] = useState('');
+  // Login-in-modal (feature #7)
+  const [loginModalOpen, setLoginModalOpen] = useState(false);
+  const [loginMode, setLoginMode] = useState<'login'|'register'>('login');
+  const [lmEmail, setLmEmail] = useState('');
+  const [lmPassword, setLmPassword] = useState('');
+  const [lmNickname, setLmNickname] = useState('');
+  const [lmError, setLmError] = useState('');
+  const [lmLoading, setLmLoading] = useState(false);
+  // Drag
   const [dragging, setDragging] = useState(false);
   const dragCounter = useRef(0);
 
@@ -76,6 +84,7 @@ export default function HomePage() {
     reader.readAsText(file);
   }, []);
 
+  // Global drag
   useEffect(() => {
     const enter = (e: DragEvent) => { e.preventDefault(); dragCounter.current++; if(e.dataTransfer?.types.includes('Files')) setDragging(true); };
     const leave = (e: DragEvent) => { e.preventDefault(); dragCounter.current--; if(dragCounter.current<=0){setDragging(false);dragCounter.current=0;} };
@@ -89,11 +98,39 @@ export default function HomePage() {
     return()=>{document.removeEventListener('dragenter',enter);document.removeEventListener('dragleave',leave);document.removeEventListener('dragover',over);document.removeEventListener('drop',drop);};
   }, [handleFile, toast]);
 
+  // ESC to close viewer (#6)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && viewing) setViewing(false); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [viewing]);
+
+  // Handle share button click (#7)
+  const handleShareClick = () => {
+    if (!user) { setLoginModalOpen(true); return; }
+    setShareOpen(true);
+  };
+
+  // Login in modal (#7)
+  const handleLoginInModal = async () => {
+    setLmError(''); setLmLoading(true);
+    if (loginMode === 'login') {
+      const res = await login(lmEmail, lmPassword);
+      if (res.error) { setLmError(res.error); setLmLoading(false); return; }
+    } else {
+      const res = await register(lmNickname, lmEmail, lmPassword);
+      if (res.error) { setLmError(res.error); setLmLoading(false); return; }
+    }
+    setLmLoading(false); setLoginModalOpen(false);
+    setLmEmail(''); setLmPassword(''); setLmNickname(''); setLmError('');
+    toast('登录成功'); setShareOpen(true);
+  };
+
   const confirmShare = async () => {
     setSharing(true);
     try {
       const res = await fetch('/api/chats/share', { method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ markdown:rawMd, title:chatData?.title||'对话', source:chatData?.source||'unknown', publishToPlaza }) });
+        body: JSON.stringify({ markdown:rawMd, title:chatData?.title||'对话', source:chatData?.source||'unknown', description:shareDesc, publishToPlaza, passcode:sharePasscode||'' }) });
       const d = await res.json();
       if(!res.ok){ toast(d.error||'分享失败'); setSharing(false); return; }
       const url = `${location.origin}/c/${d.chat.id}`;
@@ -110,8 +147,9 @@ export default function HomePage() {
         <div className="sticky top-0 z-50 bg-white/80 backdrop-blur-xl border-b border-surface-200/60">
           <div className="max-w-[780px] mx-auto px-4 sm:px-6 h-14 flex items-center justify-between gap-3">
             <div className="flex items-center gap-2.5 min-w-0 flex-1">
-              <button onClick={()=>setViewing(false)} className="flex-shrink-0 w-8 h-8 rounded-lg border border-surface-200 hover:border-brand-400 flex items-center justify-center text-surface-500 hover:text-brand-500 transition-colors">
-                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+              {/* Close icon instead of back arrow (#6) */}
+              <button onClick={()=>setViewing(false)} title="关闭 (Esc)" className="flex-shrink-0 w-8 h-8 rounded-lg border border-surface-200 hover:border-brand-400 flex items-center justify-center text-surface-500 hover:text-brand-500 transition-colors">
+                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
               </button>
               <div className="min-w-0">
                 <h2 className="font-serif font-semibold text-[0.92rem] truncate">{chatData.title}</h2>
@@ -120,12 +158,24 @@ export default function HomePage() {
             </div>
             <div className="flex items-center gap-1.5">
               <button onClick={()=>{if(!rawMd)return;const b=new Blob([rawMd],{type:'text/markdown'});const u=URL.createObjectURL(b);const a=document.createElement('a');a.href=u;a.download=(chatData?.title||'chat')+'.md';a.click();URL.revokeObjectURL(u);toast('已导出');}} className="px-2.5 py-1.5 rounded-lg border border-surface-200 text-surface-500 hover:border-brand-400 hover:text-brand-500 text-xs font-medium transition-colors">导出</button>
-              <button onClick={()=>{if(!user){router.push('/login');return;}setShareOpen(true);}} className="px-3 py-1.5 rounded-lg bg-brand-500 text-white text-xs font-semibold hover:bg-brand-600 transition-colors shadow-sm">分享</button>
+              <button onClick={handleShareClick} className="px-3 py-1.5 rounded-lg bg-brand-500 text-white text-xs font-semibold hover:bg-brand-600 transition-colors shadow-sm">分享</button>
             </div>
           </div>
         </div>
+
+        {/* Local-only tip (#6) */}
+        <div className="bg-amber-50 border-b border-amber-200/60 text-center py-2 px-4">
+          <p className="text-xs text-amber-700">
+            <svg className="w-3.5 h-3.5 inline -mt-0.5 mr-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
+            当前为本地预览，数据未保存到服务器。要保存到账号并获取分享链接，请点击
+            <button onClick={handleShareClick} className="text-brand-600 font-semibold underline underline-offset-2 ml-0.5">「分享」</button>
+          </p>
+        </div>
+
         <ChatRenderer data={chatData}/>
-        <Modal open={shareOpen} onClose={()=>{setShareOpen(false);setShareUrl('');setPublishToPlaza(false);}}>
+
+        {/* Share modal with description & passcode (#1) */}
+        <Modal open={shareOpen} onClose={()=>{setShareOpen(false);setShareUrl('');setPublishToPlaza(false);setShareDesc('');setSharePasscode('');}}>
           {!shareUrl?(
             <div className="p-6">
               <div className="text-center mb-5">
@@ -135,12 +185,23 @@ export default function HomePage() {
                 <h3 className="font-serif font-semibold text-lg">分享对话</h3>
                 <p className="text-sm text-surface-500 mt-1">保存并生成可分享的链接</p>
               </div>
-              <label className="flex items-center gap-3 p-3.5 rounded-xl border border-surface-200 hover:border-brand-300 cursor-pointer transition-colors mb-5">
+              <div className="space-y-3 mb-4">
+                <div>
+                  <label className="block text-xs font-medium text-surface-600 mb-1">描述（可选）</label>
+                  <textarea value={shareDesc} onChange={e=>setShareDesc(e.target.value)} placeholder="简要描述这段对话的内容..." className="w-full px-3 py-2 rounded-xl border border-surface-200 focus:border-brand-400 outline-none text-sm resize-none h-16" maxLength={200}/>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-surface-600 mb-1">口令保护（可选）</label>
+                  <input value={sharePasscode} onChange={e=>setSharePasscode(e.target.value.replace(/[^a-zA-Z0-9]/g,'').slice(0,4))} placeholder="4位字母或数字" maxLength={4} className="w-full px-3 py-2 rounded-xl border border-surface-200 focus:border-brand-400 outline-none text-sm font-mono tracking-widest"/>
+                  <p className="text-[0.68rem] text-surface-400 mt-1">设置后，查看者需要输入口令才能查看</p>
+                </div>
+              </div>
+              <label className="flex items-center gap-3 p-3 rounded-xl border border-surface-200 hover:border-brand-300 cursor-pointer transition-colors mb-4">
                 <input type="checkbox" checked={publishToPlaza} onChange={e=>setPublishToPlaza(e.target.checked)} className="w-4 h-4 accent-brand-500"/>
                 <div><p className="text-sm font-medium">发布到广场</p><p className="text-xs text-surface-400 mt-0.5">审核通过后出现在公共广场</p></div>
               </label>
               <div className="flex gap-3">
-                <button onClick={()=>{setShareOpen(false);setPublishToPlaza(false);}} className="flex-1 py-2.5 rounded-xl border border-surface-200 text-surface-600 text-sm font-semibold hover:bg-surface-50">取消</button>
+                <button onClick={()=>{setShareOpen(false);setPublishToPlaza(false);setShareDesc('');setSharePasscode('');}} className="flex-1 py-2.5 rounded-xl border border-surface-200 text-surface-600 text-sm font-semibold hover:bg-surface-50">取消</button>
                 <button onClick={confirmShare} disabled={sharing} className="flex-1 py-2.5 rounded-xl bg-brand-500 text-white text-sm font-semibold hover:bg-brand-600 disabled:opacity-50 shadow-sm">{sharing?'保存中...':'确认分享'}</button>
               </div>
             </div>
@@ -148,14 +209,41 @@ export default function HomePage() {
             <div className="p-6 text-center">
               <p className="text-brand-500 font-semibold text-sm mb-1">✓ 分享成功</p>
               {publishToPlaza && <p className="text-xs text-surface-400 mb-3">广场发布申请已提交，等待审核</p>}
+              {sharePasscode && <p className="text-xs text-surface-500 mb-3">口令：<span className="font-mono font-semibold text-surface-800">{sharePasscode}</span></p>}
               <div onClick={()=>{navigator.clipboard.writeText(shareUrl);toast('链接已复制');}} className="p-3 rounded-xl border border-surface-200 hover:border-brand-300 cursor-pointer bg-surface-50">
                 <code className="text-xs text-surface-600 break-all font-mono">{shareUrl}</code>
                 <p className="text-xs text-brand-500 font-medium mt-2">点击复制链接</p>
               </div>
-              <button onClick={()=>{setShareOpen(false);setShareUrl('');setPublishToPlaza(false);}} className="mt-4 text-sm text-surface-400 hover:text-brand-500">关闭</button>
+              <button onClick={()=>{setShareOpen(false);setShareUrl('');setPublishToPlaza(false);setShareDesc('');setSharePasscode('');}} className="mt-4 text-sm text-surface-400 hover:text-brand-500">关闭</button>
             </div>
           )}
         </Modal>
+
+        {/* Login/Register modal (#7) - prevents losing uploaded data */}
+        <Modal open={loginModalOpen} onClose={()=>setLoginModalOpen(false)} maxWidth="max-w-sm">
+          <div className="p-6">
+            <div className="text-center mb-5">
+              <h3 className="font-serif font-semibold text-lg">{loginMode==='login'?'登录':'注册'}以分享</h3>
+              <p className="text-xs text-surface-400 mt-1">数据不会丢失，登录后即可分享</p>
+            </div>
+            <div className="space-y-3 mb-4">
+              {loginMode==='register' && (
+                <input value={lmNickname} onChange={e=>setLmNickname(e.target.value)} placeholder="昵称（2-16字符）" className="w-full px-4 py-2.5 rounded-xl border border-surface-200 focus:border-brand-400 outline-none text-sm"/>
+              )}
+              <input type="email" value={lmEmail} onChange={e=>setLmEmail(e.target.value)} placeholder="邮箱" className="w-full px-4 py-2.5 rounded-xl border border-surface-200 focus:border-brand-400 outline-none text-sm"/>
+              <input type="password" value={lmPassword} onChange={e=>setLmPassword(e.target.value)} placeholder={loginMode==='login'?'密码':'密码（至少6位）'} className="w-full px-4 py-2.5 rounded-xl border border-surface-200 focus:border-brand-400 outline-none text-sm"
+                onKeyDown={e=>{if(e.key==='Enter')handleLoginInModal();}}/>
+            </div>
+            {lmError && <p className="text-red-500 text-xs text-center mb-3">{lmError}</p>}
+            <button onClick={handleLoginInModal} disabled={lmLoading} className="w-full py-2.5 rounded-xl bg-brand-500 text-white text-sm font-semibold hover:bg-brand-600 disabled:opacity-50 shadow-sm mb-3">
+              {lmLoading ? '处理中...' : loginMode==='login' ? '登录' : '注册'}
+            </button>
+            <p className="text-center text-xs text-surface-400">
+              {loginMode==='login' ? (<>还没有账号？<button onClick={()=>{setLoginMode('register');setLmError('');}} className="text-brand-500 font-medium">注册</button></>) : (<>已有账号？<button onClick={()=>{setLoginMode('login');setLmError('');}} className="text-brand-500 font-medium">登录</button></>)}
+            </p>
+          </div>
+        </Modal>
+
         {dragging&&(<div className="fixed inset-0 z-[9999] bg-brand-500/10 backdrop-blur-sm flex items-center justify-center pointer-events-none"><div className="bg-white rounded-2xl shadow-2xl p-10 text-center animate-scale-in"><p className="font-serif font-semibold text-lg">松开以上传文件</p></div></div>)}
       </div>
     );
@@ -183,7 +271,6 @@ export default function HomePage() {
           </div>
         </div>
       </section>
-      {/* Exporter Guide */}
       <section className="px-4 pb-20">
         <div className="max-w-3xl mx-auto">
           <div className="text-center mb-10"><h2 className="font-serif text-xl sm:text-2xl font-semibold text-surface-800 mb-2">如何导出对话？</h2><p className="text-sm text-surface-400">使用浏览器插件一键导出，然后上传即可</p></div>
