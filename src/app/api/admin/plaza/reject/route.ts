@@ -7,14 +7,12 @@ export async function POST(req: NextRequest) {
     requireAdmin(req);
     const { chatId } = await req.json();
     if (!chatId) return NextResponse.json({ error: '缺少chatId' }, { status: 400 });
-    const updated = updateChat(chatId, { plazaStatus: 'rejected' });
+    const updated = await updateChat(chatId, { plazaStatus: 'rejected' });
     if (!updated) return NextResponse.json({ error: '对话不存在' }, { status: 404 });
     return NextResponse.json({ success: true });
   } catch (e: unknown) {
-    if (e instanceof Error) {
-      if (e.message === 'UNAUTHORIZED') return NextResponse.json({ error: '请先登录' }, { status: 401 });
-      if (e.message === 'FORBIDDEN') return NextResponse.json({ error: '无权限' }, { status: 403 });
-    }
+    if (e instanceof Error && e.message === 'UNAUTHORIZED') return NextResponse.json({ error: '请先登录' }, { status: 401 });
+    if (e instanceof Error && e.message === 'FORBIDDEN') return NextResponse.json({ error: '无权限' }, { status: 403 });
     return NextResponse.json({ error: '服务器错误' }, { status: 500 });
   }
 }

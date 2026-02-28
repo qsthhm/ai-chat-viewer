@@ -1,113 +1,94 @@
 # AI Chat Viewer v2
 
-一个平台级的 AI 对话查看与分享工具，基于 Next.js + Tailwind CSS 重构。
+平台级 AI 对话查看与分享工具。支持 Claude / Gemini / ChatGPT 导出文件。
 
-## 功能概览
+## 功能
 
-### 🏠 首页
-- 上传区域，支持**整页拖放**自动识别文件
-- 支持 Claude / Gemini / ChatGPT 导出的 `.md` 和 `.json` 文件
-- 浏览器插件引导区域（Gemini Exporter / Claude Exporter）
-- 三大卖点：无需翻墙、无需登录查看、隐私安全
+- **首页**：上传区 + 全页拖放 + 浏览器插件引导
+- **用户系统**：注册/登录（昵称+邮箱+密码），JWT 认证
+- **对话分享**：上传 → 预览 → 分享链接 `/c/{id}`，可勾选「发布到广场」
+- **集**：将多个对话组合为一个列表，添加名称和描述
+- **广场**：展示审核通过的公开对话
+- **管理后台**：审核广场内容、管理用户、管理对话
 
-### 👤 用户系统
-- 注册（昵称 + 邮箱 + 密码）
-- 登录 / 登出
-- JWT Token 认证（httpOnly cookie）
+## 部署指南（GitHub → Netlify + Supabase）
 
-### 💬 对话分享
-- 上传后可直接在浏览器内预览
-- 登录后可分享，生成 `/c/{id}` 短链接
-- 分享时可勾选**「发布到广场」**（需管理员审核）
+### 第 1 步：创建 Supabase 项目
 
-### 📚 集（Collections）
-- 用户可创建「集」，选择已分享的对话组合在一起
-- 为集添加名称和描述
-- 支持编辑和删除
+1. 去 [supabase.com](https://supabase.com) 注册并创建一个新项目（免费）
+2. 进入项目后，点击左侧 **SQL Editor**
+3. 将 `supabase-schema.sql` 的内容粘贴进去，点击 **Run** 执行
+4. 进入 **Settings → API**，记下：
+   - `Project URL`（即 `SUPABASE_URL`）
+   - `service_role` key（即 `SUPABASE_SERVICE_ROLE_KEY`，注意不是 anon key）
 
-### 🏛️ 广场（Plaza）
-- 展示所有审核通过的公开对话
-- 卡片式布局，显示来源、作者、日期
-
-### 🔧 超级管理员后台
-- **待审核**：审核发布到广场的对话（通过 / 拒绝）
-- **用户管理**：查看所有用户、删除用户
-- **对话管理**：查看所有对话、删除对话
-
-## 技术栈
-
-- **框架**: Next.js 14 (App Router)
-- **样式**: Tailwind CSS
-- **语言**: TypeScript
-- **认证**: JWT + bcryptjs
-- **存储**: 内存存储（开发用，可替换为数据库）
-
-## 快速开始
+### 第 2 步：推送到 GitHub
 
 ```bash
-# 安装依赖
-npm install
-
-# 配置环境变量
-cp .env.example .env.local
-# 编辑 .env.local 设置你的密钥
-
-# 启动开发服务器
-npm run dev
+git init
+git add .
+git commit -m "Initial commit"
+git remote add origin https://github.com/你的用户名/ai-chat-viewer.git
+git push -u origin main
 ```
 
-打开 http://localhost:3000
+### 第 3 步：部署到 Netlify
 
-### 默认超级管理员
+1. 去 [app.netlify.com](https://app.netlify.com) → **Add new site** → **Import an existing project**
+2. 选择你的 GitHub 仓库
+3. 构建设置会自动识别（`netlify.toml` 已配置好）
+4. 进入 **Site configuration → Environment variables**，添加以下变量：
 
-- 邮箱：`admin@example.com`
-- 密码：`admin123`
-- 管理后台：登录后在头像下拉菜单中选择「管理后台」
+| 变量名 | 值 |
+|--------|-----|
+| `SUPABASE_URL` | 你的 Supabase Project URL |
+| `SUPABASE_SERVICE_ROLE_KEY` | 你的 service_role key |
+| `JWT_SECRET` | 随机字符串（越长越好） |
+| `SUPER_ADMIN_EMAIL` | 管理员邮箱，如 `admin@example.com` |
+| `SUPER_ADMIN_PASSWORD` | 管理员密码 |
+
+5. 点击 **Deploy**
+
+### 第 4 步：初始化管理员
+
+部署完成后，访问一次以下地址创建超级管理员账号：
+
+```
+POST https://你的域名/api/auth/init
+```
+
+可以用浏览器控制台执行：
+```js
+fetch('/api/auth/init', { method: 'POST' }).then(r => r.json()).then(console.log)
+```
+
+之后用配置的邮箱和密码登录即可进入管理后台。
 
 ## 目录结构
 
 ```
 src/
 ├── app/
-│   ├── page.tsx                # 首页（上传 + 查看器）
-│   ├── login/page.tsx          # 登录
-│   ├── register/page.tsx       # 注册
-│   ├── plaza/page.tsx          # 广场
-│   ├── dashboard/              # 个人中心
-│   │   ├── page.tsx            # 我的对话 & 集
-│   │   └── collections/[id]/  # 集详情
-│   ├── admin/page.tsx          # 超级管理员后台
-│   ├── c/[slug]/page.tsx       # 分享链接查看页
-│   └── api/                    # API 路由
-│       ├── auth/               # 注册 / 登录 / 用户信息
-│       ├── chats/              # 对话 CRUD
-│       ├── collections/        # 集 CRUD
-│       ├── plaza/              # 广场公开接口
-│       └── admin/              # 管理员接口
-├── components/
-│   ├── AuthProvider.tsx        # 认证上下文
-│   ├── ChatRenderer.tsx        # 对话渲染器
-│   ├── Modal.tsx               # 弹窗组件
-│   ├── Navbar.tsx              # 导航栏
-│   └── Toast.tsx               # 提示组件
+│   ├── page.tsx              # 首页
+│   ├── login/ register/      # 登录注册
+│   ├── plaza/                # 广场
+│   ├── dashboard/            # 个人中心 + 集管理
+│   ├── admin/                # 超级管理员后台
+│   ├── c/[slug]/             # 分享链接查看页
+│   └── api/                  # 所有 API 路由
+├── components/               # React 组件
 ├── lib/
-│   ├── auth.ts                 # JWT 工具
-│   ├── markdown.ts             # MD → HTML 渲染
-│   ├── parser.ts               # 多格式解析器
-│   └── store.ts                # 内存数据存储
-└── types/
-    └── index.ts                # TypeScript 类型定义
+│   ├── supabase.ts           # Supabase 客户端
+│   ├── store.ts              # 数据操作层（Supabase）
+│   ├── auth.ts               # JWT 认证
+│   ├── markdown.ts           # MD → HTML
+│   └── parser.ts             # 多格式解析
+└── types/                    # TypeScript 类型
+
+supabase-schema.sql           # 数据库建表 SQL
+netlify.toml                  # Netlify 部署配置
 ```
 
-## 生产部署注意
+## 技术栈
 
-当前使用**内存存储**，服务器重启后数据会丢失。生产环境请替换 `src/lib/store.ts` 为实际数据库实现（如 PostgreSQL、MongoDB、Supabase 等），接口无需修改。
-
-## 环境变量
-
-| 变量 | 说明 |
-|------|------|
-| `JWT_SECRET` | JWT 签名密钥 |
-| `SUPER_ADMIN_EMAIL` | 超级管理员邮箱 |
-| `SUPER_ADMIN_PASSWORD` | 超级管理员密码 |
-| `NEXT_PUBLIC_APP_URL` | 应用地址 |
+Next.js 14 + Tailwind CSS + TypeScript + Supabase (PostgreSQL) + Netlify

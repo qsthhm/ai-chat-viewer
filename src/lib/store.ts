@@ -1,168 +1,229 @@
 /**
- * In-memory data store for development / demo.
- * Replace with a real database (PostgreSQL, MongoDB, etc.) for production.
+ * Data store backed by Supabase (PostgreSQL).
  *
- * Using global to persist across hot-reloads in Next.js dev mode.
+ * Tables: users, chats, collections
+ * See README for the SQL to create them.
  */
 
+import { getSupabase } from './supabase';
 import { User, SharedChat, Collection } from '@/types';
-import bcrypt from 'bcryptjs';
 
-interface Store {
-  users: Map<string, User>;
-  chats: Map<string, SharedChat>;
-  collections: Map<string, Collection>;
-  initialized: boolean;
-}
-
-const globalStore = globalThis as unknown as { __store?: Store };
-
-function getStore(): Store {
-  if (!globalStore.__store) {
-    globalStore.__store = {
-      users: new Map(),
-      chats: new Map(),
-      collections: new Map(),
-      initialized: false,
-    };
-  }
-
-  // Initialize super admin on first access
-  if (!globalStore.__store.initialized) {
-    globalStore.__store.initialized = true;
-    const email = process.env.SUPER_ADMIN_EMAIL || 'admin@example.com';
-    const password = process.env.SUPER_ADMIN_PASSWORD || 'admin123';
-    const adminId = 'admin-' + Date.now();
-    const hash = bcrypt.hashSync(password, 10);
-    globalStore.__store.users.set(adminId, {
-      id: adminId,
-      nickname: '超级管理员',
-      email,
-      passwordHash: hash,
-      role: 'admin',
-      createdAt: new Date().toISOString(),
-    });
-  }
-
-  return globalStore.__store;
+function genId(prefix: string): string {
+  return prefix + '-' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
 }
 
 // ==================== Users ====================
-export function createUser(nickname: string, email: string, passwordHash: string): User {
-  const store = getStore();
-  const id = 'u-' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+
+export async function createUser(nickname: string, email: string, passwordHash: string): Promise<User> {
+  const sb = getSupabase();
   const user: User = {
-    id, nickname, email, passwordHash, role: 'user',
+    id: genId('u'),
+    nickname,
+    email,
+    passwordHash,
+    role: 'user',
     createdAt: new Date().toISOString(),
   };
-  store.users.set(id, user);
+  const { error } = await sb.from('users').insert({
+    id: user.id,
+    nickname: user.nickname,
+    email: user.email,
+    password_hash: user.passwordHash,
+    role: user.role,
+    created_at: user.createdAt,
+  });
+  if (error) throw new Error('创建用户失败: ' + error.message);
   return user;
 }
 
-export function getUserByEmail(email: string): User | undefined {
-  const store = getStore();
-  for (const u of store.users.values()) {
-    if (u.email === email) return u;
-  }
-  return undefined;
+export async function getUserByEmail(email: string): Promise<User | undefined> {
+  const sb = getSupabase();
+  const { data } = await sb.from('users').select('*').eq('email', email).maybeSingle();
+  return data ? mapUser(data) : undefined;
 }
 
-export function getUserById(id: string): User | undefined {
-  return getStore().users.get(id);
+export async function getUserById(id: string): Promise<User | undefined> {
+  const sb = getSupabase();
+  const { data } = await sb.from('users').select('*').eq('id', id).maybeSingle();
+  return data ? mapUser(data) : undefined;
 }
 
-export function getAllUsers(): User[] {
-  return Array.from(getStore().users.values());
+export async function getAllUsers(): Promise<User[]> {
+  const sb = getSupabase();
+  const { data } = await sb.from('users').select('*').order('created_at', { ascending: false });
+  return (data || []).map(mapUser);
 }
 
-export function deleteUser(id: string): boolean {
-  return getStore().users.delete(id);
+export async function deleteUser(id: string): Promise<boolean> {
+  const sb = getSupabase();
+  const { error } = await sb.from('users').delete().eq('id', id);
+  return !error;
+}
+
+function mapUser(row: Record<string, unknown>): User {
+  return {
+    id: row.id as string,
+    nickname: row.nickname as string,
+    email: row.email as string,
+    passwordHash: row.password_hash as string,
+    role: row.role as 'user' | 'admin',
+    createdAt: row.created_at as string,
+  };
 }
 
 // ==================== Chats ====================
-export function createChat(chat: Omit<SharedChat, 'id' | 'createdAt' | 'updatedAt'>): SharedChat {
-  const store = getStore();
-  const id = 'c-' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+
+export async function createChat(chat: Omit<SharedChat, 'id' | 'createdAt' | 'updatedAt'>): Promise<SharedChat> {
+  const sb = getSupabase();
   const now = new Date().toISOString();
-  const full: SharedChat = { ...chat, id, createdAt: now, updatedAt: now };
-  store.chats.set(id, full);
+  const full: SharedChat = { ...chat, id: genId('c'), createdAt: now, updatedAt: now };
+  const { error } = await sb.from('chats').insert({
+    id: full.id,
+    user_id: full.userId,
+    user_nickname: full.userNickname,
+    title: full.title,
+    markdown: full.markdown,
+    source: full.source,
+    plaza_status: full.plazaStatus,
+    created_at: full.createdAt,
+    updated_at: full.updatedAt,
+  });
+  if (error) throw new Error('创建对话失败: ' + error.message);
   return full;
 }
 
-export function getChatById(id: string): SharedChat | undefined {
-  return getStore().chats.get(id);
+export async function getChatById(id: string): Promise<SharedChat | undefined> {
+  const sb = getSupabase();
+  const { data } = await sb.from('chats').select('*').eq('id', id).maybeSingle();
+  return data ? mapChat(data) : undefined;
 }
 
-export function getChatsByUser(userId: string): SharedChat[] {
-  const store = getStore();
-  return Array.from(store.chats.values())
-    .filter(c => c.userId === userId)
-    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+export async function getChatsByUser(userId: string): Promise<SharedChat[]> {
+  const sb = getSupabase();
+  const { data } = await sb.from('chats').select('*').eq('user_id', userId).order('created_at', { ascending: false });
+  return (data || []).map(mapChat);
 }
 
-export function getAllChats(): SharedChat[] {
-  return Array.from(getStore().chats.values())
-    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+export async function getAllChats(): Promise<SharedChat[]> {
+  const sb = getSupabase();
+  const { data } = await sb.from('chats').select('*').order('created_at', { ascending: false });
+  return (data || []).map(mapChat);
 }
 
-export function getPlazaChats(status: string = 'approved'): SharedChat[] {
-  return Array.from(getStore().chats.values())
-    .filter(c => c.plazaStatus === status)
-    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+export async function getPlazaChats(status: string = 'approved'): Promise<SharedChat[]> {
+  const sb = getSupabase();
+  const { data } = await sb.from('chats').select('*').eq('plaza_status', status).order('created_at', { ascending: false });
+  return (data || []).map(mapChat);
 }
 
-export function updateChat(id: string, updates: Partial<SharedChat>): SharedChat | undefined {
-  const store = getStore();
-  const chat = store.chats.get(id);
-  if (!chat) return undefined;
-  const updated = { ...chat, ...updates, updatedAt: new Date().toISOString() };
-  store.chats.set(id, updated);
-  return updated;
+export async function updateChat(id: string, updates: Partial<SharedChat>): Promise<SharedChat | undefined> {
+  const sb = getSupabase();
+  const row: Record<string, unknown> = { updated_at: new Date().toISOString() };
+  if (updates.title !== undefined) row.title = updates.title;
+  if (updates.plazaStatus !== undefined) row.plaza_status = updates.plazaStatus;
+  if (updates.markdown !== undefined) row.markdown = updates.markdown;
+
+  const { data, error } = await sb.from('chats').update(row).eq('id', id).select('*').maybeSingle();
+  if (error || !data) return undefined;
+  return mapChat(data);
 }
 
-export function deleteChat(id: string): boolean {
-  const store = getStore();
-  // Also remove from collections
-  for (const col of store.collections.values()) {
-    col.chatIds = col.chatIds.filter(cid => cid !== id);
+export async function deleteChat(id: string): Promise<boolean> {
+  const sb = getSupabase();
+  // Remove from collections first
+  const { data: cols } = await sb.from('collections').select('id, chat_ids').contains('chat_ids', [id]);
+  if (cols) {
+    for (const col of cols) {
+      const newIds = (col.chat_ids as string[]).filter((cid: string) => cid !== id);
+      await sb.from('collections').update({ chat_ids: newIds }).eq('id', col.id);
+    }
   }
-  return store.chats.delete(id);
+  const { error } = await sb.from('chats').delete().eq('id', id);
+  return !error;
+}
+
+function mapChat(row: Record<string, unknown>): SharedChat {
+  return {
+    id: row.id as string,
+    userId: row.user_id as string,
+    userNickname: row.user_nickname as string,
+    title: row.title as string,
+    markdown: row.markdown as string,
+    source: row.source as SharedChat['source'],
+    plazaStatus: row.plaza_status as SharedChat['plazaStatus'],
+    createdAt: row.created_at as string,
+    updatedAt: row.updated_at as string,
+  };
 }
 
 // ==================== Collections ====================
-export function createCollection(col: Omit<Collection, 'id' | 'createdAt' | 'updatedAt'>): Collection {
-  const store = getStore();
-  const id = 'col-' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+
+export async function createCollection(col: Omit<Collection, 'id' | 'createdAt' | 'updatedAt'>): Promise<Collection> {
+  const sb = getSupabase();
   const now = new Date().toISOString();
-  const full: Collection = { ...col, id, createdAt: now, updatedAt: now };
-  store.collections.set(id, full);
+  const full: Collection = { ...col, id: genId('col'), createdAt: now, updatedAt: now };
+  const { error } = await sb.from('collections').insert({
+    id: full.id,
+    user_id: full.userId,
+    user_nickname: full.userNickname,
+    name: full.name,
+    description: full.description,
+    chat_ids: full.chatIds,
+    is_public: full.isPublic,
+    created_at: full.createdAt,
+    updated_at: full.updatedAt,
+  });
+  if (error) throw new Error('创建集失败: ' + error.message);
   return full;
 }
 
-export function getCollectionById(id: string): Collection | undefined {
-  return getStore().collections.get(id);
+export async function getCollectionById(id: string): Promise<Collection | undefined> {
+  const sb = getSupabase();
+  const { data } = await sb.from('collections').select('*').eq('id', id).maybeSingle();
+  return data ? mapCollection(data) : undefined;
 }
 
-export function getCollectionsByUser(userId: string): Collection[] {
-  return Array.from(getStore().collections.values())
-    .filter(c => c.userId === userId)
-    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+export async function getCollectionsByUser(userId: string): Promise<Collection[]> {
+  const sb = getSupabase();
+  const { data } = await sb.from('collections').select('*').eq('user_id', userId).order('created_at', { ascending: false });
+  return (data || []).map(mapCollection);
 }
 
-export function updateCollection(id: string, updates: Partial<Collection>): Collection | undefined {
-  const store = getStore();
-  const col = store.collections.get(id);
-  if (!col) return undefined;
-  const updated = { ...col, ...updates, updatedAt: new Date().toISOString() };
-  store.collections.set(id, updated);
-  return updated;
+export async function updateCollection(id: string, updates: Partial<Collection>): Promise<Collection | undefined> {
+  const sb = getSupabase();
+  const row: Record<string, unknown> = { updated_at: new Date().toISOString() };
+  if (updates.name !== undefined) row.name = updates.name;
+  if (updates.description !== undefined) row.description = updates.description;
+  if (updates.chatIds !== undefined) row.chat_ids = updates.chatIds;
+  if (updates.isPublic !== undefined) row.is_public = updates.isPublic;
+
+  const { data, error } = await sb.from('collections').update(row).eq('id', id).select('*').maybeSingle();
+  if (error || !data) return undefined;
+  return mapCollection(data);
 }
 
-export function deleteCollection(id: string): boolean {
-  return getStore().collections.delete(id);
+export async function deleteCollection(id: string): Promise<boolean> {
+  const sb = getSupabase();
+  const { error } = await sb.from('collections').delete().eq('id', id);
+  return !error;
 }
 
-export function getAllCollections(): Collection[] {
-  return Array.from(getStore().collections.values())
-    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+export async function getAllCollections(): Promise<Collection[]> {
+  const sb = getSupabase();
+  const { data } = await sb.from('collections').select('*').order('created_at', { ascending: false });
+  return (data || []).map(mapCollection);
+}
+
+function mapCollection(row: Record<string, unknown>): Collection {
+  return {
+    id: row.id as string,
+    userId: row.user_id as string,
+    userNickname: row.user_nickname as string,
+    name: row.name as string,
+    description: row.description as string,
+    chatIds: (row.chat_ids || []) as string[],
+    isPublic: row.is_public as boolean,
+    createdAt: row.created_at as string,
+    updatedAt: row.updated_at as string,
+  };
 }
