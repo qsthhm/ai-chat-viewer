@@ -6,6 +6,7 @@ import { useAuth } from '@/components/AuthProvider';
 import { useToast } from '@/components/Toast';
 import Modal from '@/components/Modal';
 import ChatRenderer from '@/components/ChatRenderer';
+import SliderCaptcha from '@/components/SliderCaptcha';
 import { ParsedChat } from '@/types';
 
 function detectAndParse(raw: string, filename?: string): ParsedChat {
@@ -74,6 +75,7 @@ export default function HomePage() {
   const [lmNickname, setLmNickname] = useState('');
   const [lmError, setLmError] = useState('');
   const [lmLoading, setLmLoading] = useState(false);
+  const [lmCaptchaToken, setLmCaptchaToken] = useState('');
   // Drag
   const [dragging, setDragging] = useState(false);
   const dragCounter = useRef(0);
@@ -114,15 +116,16 @@ export default function HomePage() {
   // Login in modal (#7)
   const handleLoginInModal = async () => {
     setLmError(''); setLmLoading(true);
+    if (!lmCaptchaToken) { setLmError('请先完成滑块验证'); setLmLoading(false); return; }
     if (loginMode === 'login') {
-      const res = await login(lmEmail, lmPassword);
+      const res = await login(lmEmail, lmPassword, lmCaptchaToken);
       if (res.error) { setLmError(res.error); setLmLoading(false); return; }
     } else {
-      const res = await register(lmNickname, lmEmail, lmPassword);
+      const res = await register(lmNickname, lmEmail, lmPassword, lmCaptchaToken);
       if (res.error) { setLmError(res.error); setLmLoading(false); return; }
     }
     setLmLoading(false); setLoginModalOpen(false);
-    setLmEmail(''); setLmPassword(''); setLmNickname(''); setLmError('');
+    setLmEmail(''); setLmPassword(''); setLmNickname(''); setLmError(''); setLmCaptchaToken('');
     toast('登录成功'); setShareOpen(true);
   };
 
@@ -232,10 +235,11 @@ export default function HomePage() {
               )}
               <input type="email" value={lmEmail} onChange={e=>setLmEmail(e.target.value)} placeholder="邮箱" className="w-full px-4 py-2.5 rounded-xl border border-surface-200 focus:border-brand-400 outline-none text-sm"/>
               <input type="password" value={lmPassword} onChange={e=>setLmPassword(e.target.value)} placeholder={loginMode==='login'?'密码':'密码（至少6位）'} className="w-full px-4 py-2.5 rounded-xl border border-surface-200 focus:border-brand-400 outline-none text-sm"
-                onKeyDown={e=>{if(e.key==='Enter')handleLoginInModal();}}/>
+                onKeyDown={e=>{if(e.key==='Enter'&&lmCaptchaToken)handleLoginInModal();}}/>
             </div>
+            <div className="mb-4"><SliderCaptcha onSuccess={setLmCaptchaToken} /></div>
             {lmError && <p className="text-red-500 text-xs text-center mb-3">{lmError}</p>}
-            <button onClick={handleLoginInModal} disabled={lmLoading} className="w-full py-2.5 rounded-xl bg-brand-500 text-white text-sm font-semibold hover:bg-brand-600 disabled:opacity-50 shadow-sm mb-3">
+            <button onClick={handleLoginInModal} disabled={lmLoading||!lmCaptchaToken} className="w-full py-2.5 rounded-xl bg-brand-500 text-white text-sm font-semibold hover:bg-brand-600 disabled:opacity-50 shadow-sm mb-3">
               {lmLoading ? '处理中...' : loginMode==='login' ? '登录' : '注册'}
             </button>
             <p className="text-center text-xs text-surface-400">

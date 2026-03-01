@@ -76,3 +76,24 @@ export function validateNickname(name: string): string | null {
 export function validatePasscode(code: string): boolean {
   return /^[a-zA-Z0-9]{4}$/.test(code);
 }
+
+/**
+ * Validate slider captcha token.
+ * Token is base64(timestamp:dragDuration:random).
+ * Rejects if: missing, malformed, drag too fast (<200ms), or token too old (>5min).
+ */
+export function validateCaptchaToken(token: string | undefined): string | null {
+  if (!token) return '请完成滑块验证';
+  try {
+    const decoded = Buffer.from(token, 'base64').toString();
+    const [tsStr, durStr] = decoded.split(':');
+    const ts = parseInt(tsStr, 10);
+    const dur = parseInt(durStr, 10);
+    if (isNaN(ts) || isNaN(dur)) return '验证无效';
+    if (dur < 200) return '验证异常，请重试';
+    if (Date.now() - ts > 5 * 60 * 1000) return '验证已过期，请重试';
+    return null; // valid
+  } catch {
+    return '验证无效';
+  }
+}

@@ -132,15 +132,35 @@ export default function DashboardPage() {
                 <div key={c.id} className="p-4 rounded-xl border border-surface-200 bg-white hover:border-brand-200 transition-colors group">
                   <div className="flex items-center gap-3">
                     <div className="flex-1 min-w-0">
-                      <Link href={`/dashboard/collections/${c.id}`} className="font-semibold text-sm text-surface-800 hover:text-brand-600 truncate block">{c.name}</Link>
-                      <div className="flex items-center gap-3 mt-0.5 text-xs text-surface-400">
+                      {c.shareId ? (
+                        <Link href={`/s/${c.shareId}`} className="font-semibold text-sm text-surface-800 hover:text-brand-600 truncate block">{c.name}</Link>
+                      ) : (
+                        <Link href={`/dashboard/collections/${c.id}`} className="font-semibold text-sm text-surface-800 hover:text-brand-600 truncate block">{c.name}</Link>
+                      )}
+                      <div className="flex items-center gap-2 mt-0.5 text-xs text-surface-400 flex-wrap">
                         <span>{c.description || `${c.chatIds.length} 个对话`}</span>
+                        {c.shareId && (
+                          <span className="inline-flex items-center gap-1 text-green-600 bg-green-50 px-1.5 py-0.5 rounded-md font-medium">
+                            <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="20 6 9 17 4 12"/></svg>
+                            已分享
+                          </span>
+                        )}
                         {c.plazaStatus!=='none' && <span className={stColor[c.plazaStatus]||''}>{stLabel[c.plazaStatus]||''}</span>}
                       </div>
                     </div>
                     <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      {c.shareId && (
+                        <button onClick={()=>{navigator.clipboard.writeText(`${location.origin}/s/${c.shareId}`);toast('链接已复制');}} className="px-2.5 py-1 rounded-lg text-xs text-surface-500 hover:bg-surface-100 flex items-center gap-1" title="复制分享链接">
+                          <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                          复制链接
+                        </button>
+                      )}
                       <button onClick={()=>openShareCol(c)} className="px-2.5 py-1 rounded-lg text-xs text-brand-500 hover:bg-brand-50 font-medium">{c.shareId?'分享设置':'分享'}</button>
-                      <Link href={`/dashboard/collections/${c.id}`} className="px-2.5 py-1 rounded-lg text-xs text-surface-500 hover:bg-surface-100">编辑</Link>
+                      {c.shareId ? (
+                        <Link href={`/s/${c.shareId}`} className="px-2.5 py-1 rounded-lg text-xs text-surface-500 hover:bg-surface-100">编辑</Link>
+                      ) : (
+                        <Link href={`/dashboard/collections/${c.id}`} className="px-2.5 py-1 rounded-lg text-xs text-surface-500 hover:bg-surface-100">编辑</Link>
+                      )}
                       <button onClick={()=>deleteCol(c.id)} className="px-2.5 py-1 rounded-lg text-xs text-red-500 hover:bg-red-50">删除</button>
                     </div>
                   </div>

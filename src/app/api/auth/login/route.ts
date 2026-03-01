@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getUserByEmail, recordLoginAttempt, getRecentLoginAttempts, cleanOldLoginAttempts, updateUser } from '@/lib/store';
-import { verifyPassword, signToken, getClientIp } from '@/lib/auth';
+import { verifyPassword, signToken, getClientIp, validateCaptchaToken } from '@/lib/auth';
 
 export async function POST(req: NextRequest) {
   try {
@@ -12,7 +12,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: '登录尝试过于频繁，请15分钟后再试' }, { status: 429 });
     }
 
-    const { email, password } = await req.json();
+    const { email, password, captchaToken } = await req.json();
+
+    // Validate captcha
+    const captchaErr = validateCaptchaToken(captchaToken);
+    if (captchaErr) return NextResponse.json({ error: captchaErr }, { status: 400 });
+
     if (!email?.trim() || !password) {
       return NextResponse.json({ error: '请填写邮箱和密码' }, { status: 400 });
     }

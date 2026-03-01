@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createUser, getUserByEmail, getUserByNickname, getRecentLoginAttempts, recordLoginAttempt, getSettings } from '@/lib/store';
-import { hashPassword, signToken, validateNickname, getClientIp } from '@/lib/auth';
+import { hashPassword, signToken, validateNickname, getClientIp, validateCaptchaToken } from '@/lib/auth';
 
 export async function POST(req: NextRequest) {
   try {
@@ -18,7 +18,12 @@ export async function POST(req: NextRequest) {
     }
     await recordLoginAttempt(ip, '');
 
-    const { nickname, email, password } = await req.json();
+    const { nickname, email, password, captchaToken } = await req.json();
+
+    // Validate captcha
+    const captchaErr = validateCaptchaToken(captchaToken);
+    if (captchaErr) return NextResponse.json({ error: captchaErr }, { status: 400 });
+
     if (!nickname?.trim() || !email?.trim() || !password) {
       return NextResponse.json({ error: '请填写所有字段' }, { status: 400 });
     }

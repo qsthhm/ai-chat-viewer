@@ -24,10 +24,14 @@ export default function CollectionDetailPage() {
 
   useEffect(() => {
     fetch(`/api/collections/${id}`).then(r=>r.json()).then(d=>{
-      if(d.collection){ setCol(d.collection); setName(d.collection.name); setDesc(d.collection.description); setSelectedIds(d.collection.chatIds); }
+      if(d.collection){
+        // If already shared, redirect to unified URL
+        if(d.collection.shareId) { router.replace(`/s/${d.collection.shareId}`); return; }
+        setCol(d.collection); setName(d.collection.name); setDesc(d.collection.description); setSelectedIds(d.collection.chatIds);
+      }
     });
     fetch('/api/chats/my').then(r=>r.json()).then(d=>setMyChats(d.chats||[]));
-  }, [id]);
+  }, [id, router]);
 
   const save = async () => {
     await fetch(`/api/collections/${id}`, { method:'PATCH', headers:{'Content-Type':'application/json'},

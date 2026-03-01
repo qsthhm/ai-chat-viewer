@@ -12,8 +12,8 @@ interface UserInfo {
 interface AuthCtx {
   user: UserInfo | null;
   loading: boolean;
-  login: (email: string, password: string) => Promise<{ error?: string }>;
-  register: (nickname: string, email: string, password: string) => Promise<{ error?: string }>;
+  login: (email: string, password: string, captchaToken?: string) => Promise<{ error?: string }>;
+  register: (nickname: string, email: string, password: string, captchaToken?: string) => Promise<{ error?: string }>;
   logout: () => Promise<void>;
   refresh: () => Promise<void>;
 }
@@ -48,11 +48,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => { refresh(); }, [refresh]);
 
-  const login = async (email: string, password: string) => {
+  const login = async (email: string, password: string, captchaToken?: string) => {
     const res = await fetch('/api/auth/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({ email, password, captchaToken }),
     });
     const d = await res.json();
     if (!res.ok) return { error: d.error };
@@ -60,11 +60,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return {};
   };
 
-  const register = async (nickname: string, email: string, password: string) => {
+  const register = async (nickname: string, email: string, password: string, captchaToken?: string) => {
     const res = await fetch('/api/auth/register', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ nickname, email, password }),
+      body: JSON.stringify({ nickname, email, password, captchaToken }),
     });
     const d = await res.json();
     if (!res.ok) return { error: d.error };
