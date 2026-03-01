@@ -9,12 +9,27 @@ function esc(t: string): string {
   return d.innerHTML;
 }
 
-function proxyImg(url: string): string {
-  // Proxy Google CDN images through our API to bypass hotlink protection
-  if (url.includes('googleusercontent.com')) {
-    return '/api/img?url=' + encodeURIComponent(url);
+function imgTag(url: string, alt: string = ''): string {
+  const isGoogle = /lh[0-9]*\.googleusercontent\.com\/gg\//.test(url);
+
+  if (isGoogle) {
+    // Gemini /gg/ images require Google login — browser can't load them cross-site
+    // (third-party cookies blocked). Render a clickable card that opens the original.
+    const safeUrl = esc(url);
+    return [
+      `<a href="${safeUrl}" target="_blank" rel="noopener" class="gimg-card" title="${alt || '点击查看原图'}">`,
+        `<span class="gimg-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg></span>`,
+        `<span class="gimg-text">`,
+          `<span class="gimg-title">Gemini 图片 — 点击查看</span>`,
+          `<span class="gimg-sub">需登录 Google 账号，将在新标签页打开</span>`,
+        `</span>`,
+        `<span class="gimg-arrow"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></span>`,
+      `</a>`,
+    ].join('');
   }
-  return url;
+
+  // Non-Google images: render normally
+  return `<img src="${esc(url)}" alt="${esc(alt)}" class="chat-img" loading="lazy" referrerpolicy="no-referrer">`;
 }
 
 function inline(t: string): string {
@@ -27,19 +42,19 @@ function inline(t: string): string {
   // Images - support both markdown images and plain image URLs
   t = t.replace(
     /!\[([^\]]*)\]\(([^)]+)\)/g,
-    (_, alt, url) => `<img src="${proxyImg(url)}" alt="${alt}" class="chat-img" loading="lazy" referrerpolicy="no-referrer">`
+    (_, alt, url) => imgTag(url, alt)
   );
   // Bare image URLs (common in Gemini exports)
   t = t.replace(
     /(?<![("=])(https?:\/\/[^\s<>"]+\.(?:png|jpg|jpeg|gif|webp|svg)(?:\?[^\s<>"]*)?)/gi,
-    (_, url) => `<img src="${proxyImg(url)}" class="chat-img" loading="lazy" referrerpolicy="no-referrer">`
+    (_, url) => imgTag(url)
   );
   // Google generated content URLs (Gemini images) - not ending in image extension
   t = t.replace(
     /(?<![("=<])(https?:\/\/lh[0-9]*\.googleusercontent\.com\/[^\s<>"]+)/g,
     (match) => {
       if (match.includes('<img') || match.includes('src=')) return match;
-      return `<img src="${proxyImg(match)}" class="chat-img" loading="lazy" referrerpolicy="no-referrer">`;
+      return imgTag(match);
     }
   );
   // Links
