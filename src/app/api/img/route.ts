@@ -27,7 +27,7 @@ export async function GET(req: NextRequest) {
   }
 
   // Try multiple User-Agent / header combos to get past Google's restrictions
-  const strategies = [
+  const strategies: Array<{ headers: Record<string, string> }> = [
     {
       // Strategy 1: Full Chrome browser headers with Gemini referer
       headers: {
