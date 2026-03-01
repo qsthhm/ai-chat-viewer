@@ -11,7 +11,7 @@ export async function POST(req: NextRequest) {
     if (!name?.trim()) return NextResponse.json({ error: '请输入集名称' }, { status: 400 });
     const col = await createCollection({
       userId: u.id, userNickname: u.nickname, name: name.trim(),
-      description: description?.trim() || '', chatIds: chatIds || [], isPublic: isPublic || false,
+      description: description?.trim() || '', chatIds: chatIds || [], isPublic: isPublic || false, shareId: '',
     });
     return NextResponse.json({ success: true, collection: col });
   } catch (e: unknown) {

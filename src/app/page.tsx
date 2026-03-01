@@ -100,10 +100,10 @@ export default function HomePage() {
 
   // ESC to close viewer (#6)
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && viewing) setViewing(false); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && viewing && !shareOpen && !loginModalOpen) setViewing(false); };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [viewing]);
+  }, [viewing, shareOpen, loginModalOpen]);
 
   // Handle share button click (#7)
   const handleShareClick = () => {

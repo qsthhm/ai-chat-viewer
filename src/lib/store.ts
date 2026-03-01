@@ -106,7 +106,7 @@ export async function createChat(chat: Omit<SharedChat, 'id' | 'createdAt' | 'up
     id: full.id, user_id: full.userId, user_nickname: full.userNickname,
     title: full.title, description: full.description || '', markdown: full.markdown,
     source: full.source, plaza_status: full.plazaStatus,
-    passcode: full.passcode || '',
+    passcode: full.passcode || '', reject_reason: full.rejectReason || '',
     created_at: full.createdAt, updated_at: full.updatedAt,
   });
   if (error) throw new Error('创建对话失败: ' + error.message);
@@ -145,6 +145,7 @@ export async function updateChat(id: string, updates: Partial<SharedChat>): Prom
   if (updates.plazaStatus !== undefined) row.plaza_status = updates.plazaStatus;
   if (updates.markdown !== undefined) row.markdown = updates.markdown;
   if (updates.passcode !== undefined) row.passcode = updates.passcode;
+  if (updates.rejectReason !== undefined) row.reject_reason = updates.rejectReason;
   const { data, error } = await sb.from('chats').update(row).eq('id', id).select('*').maybeSingle();
   if (error || !data) return undefined;
   return mapChat(data);
@@ -171,6 +172,7 @@ function mapChat(row: Record<string, unknown>): SharedChat {
     markdown: row.markdown as string, source: row.source as SharedChat['source'],
     plazaStatus: row.plaza_status as SharedChat['plazaStatus'],
     passcode: (row.passcode as string) || '',
+    rejectReason: (row.reject_reason as string) || '',
     createdAt: row.created_at as string, updatedAt: row.updated_at as string,
   };
 }
@@ -184,7 +186,8 @@ export async function createCollection(col: Omit<Collection, 'id' | 'createdAt' 
   const { error } = await sb.from('collections').insert({
     id: full.id, user_id: full.userId, user_nickname: full.userNickname,
     name: full.name, description: full.description, chat_ids: full.chatIds,
-    is_public: full.isPublic, created_at: full.createdAt, updated_at: full.updatedAt,
+    is_public: full.isPublic, share_id: full.shareId || '',
+    created_at: full.createdAt, updated_at: full.updatedAt,
   });
   if (error) throw new Error('创建集失败: ' + error.message);
   return full;
@@ -209,6 +212,7 @@ export async function updateCollection(id: string, updates: Partial<Collection>)
   if (updates.description !== undefined) row.description = updates.description;
   if (updates.chatIds !== undefined) row.chat_ids = updates.chatIds;
   if (updates.isPublic !== undefined) row.is_public = updates.isPublic;
+  if (updates.shareId !== undefined) row.share_id = updates.shareId;
   const { data, error } = await sb.from('collections').update(row).eq('id', id).select('*').maybeSingle();
   if (error || !data) return undefined;
   return mapCollection(data);
@@ -218,6 +222,12 @@ export async function deleteCollection(id: string): Promise<boolean> {
   const sb = getSupabase();
   const { error } = await sb.from('collections').delete().eq('id', id);
   return !error;
+}
+
+export async function getCollectionByShareId(shareId: string): Promise<Collection | undefined> {
+  const sb = getSupabase();
+  const { data } = await sb.from('collections').select('*').eq('share_id', shareId).maybeSingle();
+  return data ? mapCollection(data) : undefined;
 }
 
 export async function getAllCollections(): Promise<Collection[]> {
@@ -231,7 +241,8 @@ function mapCollection(row: Record<string, unknown>): Collection {
     id: row.id as string, userId: row.user_id as string,
     userNickname: row.user_nickname as string, name: row.name as string,
     description: row.description as string, chatIds: (row.chat_ids || []) as string[],
-    isPublic: row.is_public as boolean, createdAt: row.created_at as string,
+    isPublic: row.is_public as boolean, shareId: (row.share_id as string) || '',
+    createdAt: row.created_at as string,
     updatedAt: row.updated_at as string,
   };
 }

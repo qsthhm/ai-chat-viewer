@@ -60,7 +60,7 @@ export default function ChatRenderer({ data }: { data: ParsedChat }) {
         @keyframes msgIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
         .msg-user { display: flex; flex-direction: column; align-items: flex-end; }
         .msg-assistant { display: flex; gap: 0.65rem; align-items: flex-start; }
-        .bub { font-size: 0.9rem; line-height: 1.75; }
+        .bub { font-size: 0.9rem; line-height: 1.75; word-break: break-word; }
         .bub-user { background: #EDE9E3; border-radius: 16px 16px 4px 16px; padding: 0.75rem 1.1rem; max-width: 82%; box-shadow: 0 1px 2px rgba(28,25,23,0.04); }
         .bub-assistant { font-size: 0.9rem; line-height: 1.75; }
         .bub p { margin-bottom: 0.7rem; } .bub p:last-child { margin-bottom: 0; }
@@ -87,6 +87,11 @@ export default function ChatRenderer({ data }: { data: ParsedChat }) {
         .av svg { width: 13px; height: 13px; }
         .bub-wrap { flex: 1; min-width: 0; }
         .ts { font-size: 0.68rem; color: #A8A29E; margin-top: 0.25rem; padding: 0 0.15rem; }
+        /* Image styles */
+        .chat-img { max-width: 100%; border-radius: 8px; margin: 0.5rem 0; display: block; }
+        .img-block { margin: 0.5rem 0; }
+        .img-block .chat-img { max-width: min(100%, 520px); }
+        .bub-user .chat-img { max-width: min(100%, 300px); border-radius: 12px; }
       `}</style>
       <div ref={bodyRef} className="max-w-[780px] mx-auto px-4 sm:px-6 py-5 pb-16" />
     </>

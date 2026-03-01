@@ -9,7 +9,7 @@ export async function POST(req: NextRequest) {
     if (!chatId) return NextResponse.json({ error: '缺少chatId' }, { status: 400 });
     const updated = await updateChat(chatId, {
       plazaStatus: 'rejected',
-      rejectReason: reason || '不符合广场内容标准',
+      rejectReason: reason || '已从广场下架',
     });
     if (!updated) return NextResponse.json({ error: '对话不存在' }, { status: 404 });
     return NextResponse.json({ success: true });

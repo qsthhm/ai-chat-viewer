@@ -7,7 +7,9 @@ export async function GET(req: NextRequest) {
     const user = requireAuth(req);
     const chats = await getChatsByUser(user.userId);
     return NextResponse.json({ success: true, chats: chats.map(c => ({
-      id: c.id, title: c.title, source: c.source, plazaStatus: c.plazaStatus, createdAt: c.createdAt,
+      id: c.id, title: c.title, source: c.source,
+      plazaStatus: c.plazaStatus, rejectReason: c.rejectReason || '',
+      createdAt: c.createdAt,
     })) });
   } catch (e: unknown) {
     if (e instanceof Error && e.message === 'UNAUTHORIZED') return NextResponse.json({ error: '请先登录' }, { status: 401 });

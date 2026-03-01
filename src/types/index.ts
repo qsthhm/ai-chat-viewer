@@ -19,6 +19,7 @@ export interface SharedChat {
   source: 'claude' | 'gemini' | 'chatgpt' | 'unknown';
   plazaStatus: 'none' | 'pending' | 'approved' | 'rejected';
   passcode: string;
+  rejectReason: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -31,6 +32,7 @@ export interface Collection {
   description: string;
   chatIds: string[];
   isPublic: boolean;
+  shareId: string;
   createdAt: string;
   updatedAt: string;
 }

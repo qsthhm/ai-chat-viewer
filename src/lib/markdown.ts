@@ -16,10 +16,25 @@ function inline(t: string): string {
   t = t.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
   t = t.replace(/(?<!\*)\*([^*\n]+?)\*(?!\*)/g, '<em>$1</em>');
   t = t.replace(/~~(.+?)~~/g, '<del>$1</del>');
+  // Images - support both markdown images and plain image URLs
   t = t.replace(
     /!\[([^\]]*)\]\(([^)]+)\)/g,
-    '<img src="$2" alt="$1" style="max-width:100%;border-radius:8px;margin:0.3rem 0;display:block" loading="lazy">'
+    '<img src="$2" alt="$1" class="chat-img" loading="lazy" referrerpolicy="no-referrer">'
   );
+  // Bare image URLs (common in Gemini exports)
+  t = t.replace(
+    /(?<![("=])(https?:\/\/[^\s<>"]+\.(?:png|jpg|jpeg|gif|webp|svg)(?:\?[^\s<>"]*)?)/gi,
+    '<img src="$1" class="chat-img" loading="lazy" referrerpolicy="no-referrer">'
+  );
+  // Google generated content URLs (Gemini images)
+  t = t.replace(
+    /(?<![("=])(https?:\/\/lh[0-9]*\.googleusercontent\.com\/[^\s<>"]+)/g,
+    (match) => {
+      if (match.includes('<img')) return match; // already handled
+      return `<img src="${match}" class="chat-img" loading="lazy" referrerpolicy="no-referrer">`;
+    }
+  );
+  // Links
   t = t.replace(
     /\[([^\]]+)\]\(([^)]+)\)/g,
     '<a href="$2" target="_blank" rel="noopener">$1</a>'
@@ -49,6 +64,16 @@ export function mdToHtml(src: string): string {
     tokens.push(`<pre class="code-block"><code>${esc(code.trimEnd())}</code></pre>`);
     return id;
   });
+
+  // Standalone image blocks (line is just an image URL or markdown image)
+  rest = rest.replace(
+    /^(!\[[^\]]*\]\([^)]+\))$/gm,
+    (match) => {
+      const id = `__TOK${tokens.length}__`;
+      tokens.push(`<div class="img-block">${inline(match)}</div>`);
+      return id;
+    }
+  );
 
   // Tables
   rest = rest.replace(
