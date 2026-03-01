@@ -3,43 +3,57 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import Navbar from '@/components/Navbar';
 
-interface PlazaChat { id: string; title: string; source: string; userNickname: string; createdAt: string; }
-const sourceLabel: Record<string,string> = { claude:'Claude', gemini:'Gemini', chatgpt:'ChatGPT', unknown:'AI' };
-const sourceColor: Record<string,string> = { claude:'bg-brand-100 text-brand-600', gemini:'bg-blue-100 text-blue-600', chatgpt:'bg-emerald-100 text-emerald-600', unknown:'bg-gray-100 text-gray-600' };
+interface PlazaChat { id:string; title:string; description:string; source:string; userNickname:string; createdAt:string; type:'chat'; }
+interface PlazaCol { id:string; shareId:string; name:string; description:string; userNickname:string; chatCount:number; createdAt:string; type:'collection'; }
+type PlazaItem = PlazaChat | PlazaCol;
+
+const srcIcon: Record<string,string> = { claude:'🤖', gemini:'✨', chatgpt:'💬', unknown:'📝' };
 
 export default function PlazaPage() {
-  const [chats, setChats] = useState<PlazaChat[]>([]);
+  const [items, setItems] = useState<PlazaItem[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch('/api/plaza').then(r=>r.json()).then(d=>{ setChats(d.chats||[]); setLoading(false); }).catch(()=>setLoading(false));
+    fetch('/api/plaza').then(r=>r.json()).then(d => {
+      const all: PlazaItem[] = [
+        ...(d.chats||[]).map((c:any)=>({...c,type:'chat'})),
+        ...(d.collections||[]).map((c:any)=>({...c,type:'collection'})),
+      ].sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      setItems(all);
+    }).finally(()=>setLoading(false));
   }, []);
 
   return (
     <div className="min-h-dvh"><Navbar/>
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 pt-10 pb-20">
-        <div className="text-center mb-10">
-          <h1 className="font-serif text-2xl sm:text-3xl font-semibold mb-2">广场</h1>
-          <p className="text-sm text-surface-400">浏览社区分享的精彩 AI 对话</p>
-        </div>
-        {loading ? (
-          <div className="flex justify-center py-20"><div className="w-8 h-8 border-2 border-brand-200 border-t-brand-500 rounded-full animate-spin"/></div>
-        ) : chats.length === 0 ? (
-          <div className="text-center py-20 text-surface-400"><p className="text-lg mb-2">🏖️</p><p className="text-sm">广场暂时还没有内容</p></div>
-        ) : (
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {chats.map(c => (
-              <Link key={c.id} href={`/c/${c.id}`} className="group block p-5 rounded-2xl border border-surface-200 bg-white hover:border-brand-300 hover:shadow-lg hover:-translate-y-0.5 transition-all">
-                <div className="flex items-center gap-2 mb-3">
-                  <span className={`text-[0.68rem] font-semibold px-2 py-0.5 rounded-md ${sourceColor[c.source]||sourceColor.unknown}`}>{sourceLabel[c.source]||'AI'}</span>
-                  <span className="text-[0.68rem] text-surface-400">{new Date(c.createdAt).toLocaleDateString('zh-CN')}</span>
-                </div>
-                <h3 className="font-semibold text-sm text-surface-800 group-hover:text-brand-600 transition-colors line-clamp-2 mb-2">{c.title}</h3>
-                <p className="text-xs text-surface-400">by {c.userNickname}</p>
-              </Link>
-            ))}
-          </div>
-        )}
+      <div className="max-w-3xl mx-auto px-4 sm:px-6 pt-8 pb-20">
+        <div className="text-center mb-10"><h1 className="font-serif text-2xl sm:text-3xl font-semibold mb-2">广场</h1><p className="text-sm text-surface-400">来自社区的精彩 AI 对话</p></div>
+        {loading ? <div className="flex justify-center py-20"><div className="w-8 h-8 border-2 border-brand-200 border-t-brand-500 rounded-full animate-spin"/></div> :
+          items.length===0 ? <div className="text-center py-20 text-surface-400 text-sm">广场还没有内容</div> : (
+            <div className="grid sm:grid-cols-2 gap-3">{items.map(item => {
+              if (item.type === 'chat') {
+                const c = item as PlazaChat;
+                return (
+                  <Link key={c.id} href={`/c/${c.id}`} className="block p-4 rounded-xl border border-surface-200 bg-white hover:border-brand-300 hover:shadow-md transition-all group">
+                    <div className="flex items-center gap-2 mb-2"><span className="text-lg">{srcIcon[c.source]||'📝'}</span><span className="text-[0.6rem] px-1.5 py-0.5 rounded-md bg-blue-50 text-blue-600 font-medium">对话</span></div>
+                    <h3 className="font-semibold text-sm text-surface-800 group-hover:text-brand-600 line-clamp-2 mb-1">{c.title}</h3>
+                    {c.description && <p className="text-xs text-surface-400 line-clamp-2 mb-2">{c.description}</p>}
+                    <div className="text-xs text-surface-400"><span>{c.userNickname}</span> · <span>{new Date(c.createdAt).toLocaleDateString('zh-CN')}</span></div>
+                  </Link>
+                );
+              } else {
+                const c = item as PlazaCol;
+                return (
+                  <Link key={c.id} href={`/s/${c.shareId}`} className="block p-4 rounded-xl border border-surface-200 bg-white hover:border-purple-300 hover:shadow-md transition-all group">
+                    <div className="flex items-center gap-2 mb-2"><span className="text-lg">📚</span><span className="text-[0.6rem] px-1.5 py-0.5 rounded-md bg-purple-50 text-purple-600 font-medium">集 · {c.chatCount} 篇</span></div>
+                    <h3 className="font-semibold text-sm text-surface-800 group-hover:text-purple-600 line-clamp-2 mb-1">{c.name}</h3>
+                    {c.description && <p className="text-xs text-surface-400 line-clamp-2 mb-2">{c.description}</p>}
+                    <div className="text-xs text-surface-400"><span>{c.userNickname}</span> · <span>{new Date(c.createdAt).toLocaleDateString('zh-CN')}</span></div>
+                  </Link>
+                );
+              }
+            })}</div>
+          )
+        }
       </div>
     </div>
   );

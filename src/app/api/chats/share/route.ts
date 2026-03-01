@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, validatePasscode } from '@/lib/auth';
-import { createChat, getUserById } from '@/lib/store';
+import { createChat, getUserById, getSettings } from '@/lib/store';
 import { SharedChat } from '@/types';
 
 export async function POST(req: NextRequest) {
@@ -13,12 +13,18 @@ export async function POST(req: NextRequest) {
     if (passcode && !validatePasscode(passcode)) {
       return NextResponse.json({ error: '口令必须是4位字母或数字' }, { status: 400 });
     }
+
+    let plazaStatus: SharedChat['plazaStatus'] = 'none';
+    if (publishToPlaza) {
+      const settings = await getSettings();
+      plazaStatus = settings.reviewChats ? 'pending' : 'approved';
+    }
+
     const chat = await createChat({
       userId: user.id, userNickname: user.nickname,
       title: title || '对话', description: description || '',
-      markdown, source: source || 'unknown',
-      plazaStatus: publishToPlaza ? 'pending' : 'none',
-      passcode: passcode || '',
+      markdown, source: source || 'unknown', plazaStatus,
+      passcode: passcode || '', rejectReason: '',
     } as Omit<SharedChat, 'id' | 'createdAt' | 'updatedAt'>);
     return NextResponse.json({ success: true, chat: { id: chat.id, title: chat.title, plazaStatus: chat.plazaStatus } });
   } catch (e: unknown) {

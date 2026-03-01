@@ -9,6 +9,14 @@ function esc(t: string): string {
   return d.innerHTML;
 }
 
+function proxyImg(url: string): string {
+  // Proxy Google CDN images through our API to bypass hotlink protection
+  if (url.includes('googleusercontent.com')) {
+    return '/api/img?url=' + encodeURIComponent(url);
+  }
+  return url;
+}
+
 function inline(t: string): string {
   if (!t) return '';
   t = t.replace(/`([^`]+)`/g, (_, c) => `<code>${esc(c)}</code>`);
@@ -19,19 +27,19 @@ function inline(t: string): string {
   // Images - support both markdown images and plain image URLs
   t = t.replace(
     /!\[([^\]]*)\]\(([^)]+)\)/g,
-    '<img src="$2" alt="$1" class="chat-img" loading="lazy" referrerpolicy="no-referrer">'
+    (_, alt, url) => `<img src="${proxyImg(url)}" alt="${alt}" class="chat-img" loading="lazy" referrerpolicy="no-referrer">`
   );
   // Bare image URLs (common in Gemini exports)
   t = t.replace(
     /(?<![("=])(https?:\/\/[^\s<>"]+\.(?:png|jpg|jpeg|gif|webp|svg)(?:\?[^\s<>"]*)?)/gi,
-    '<img src="$1" class="chat-img" loading="lazy" referrerpolicy="no-referrer">'
+    (_, url) => `<img src="${proxyImg(url)}" class="chat-img" loading="lazy" referrerpolicy="no-referrer">`
   );
-  // Google generated content URLs (Gemini images)
+  // Google generated content URLs (Gemini images) - not ending in image extension
   t = t.replace(
-    /(?<![("=])(https?:\/\/lh[0-9]*\.googleusercontent\.com\/[^\s<>"]+)/g,
+    /(?<![("=<])(https?:\/\/lh[0-9]*\.googleusercontent\.com\/[^\s<>"]+)/g,
     (match) => {
-      if (match.includes('<img')) return match; // already handled
-      return `<img src="${match}" class="chat-img" loading="lazy" referrerpolicy="no-referrer">`;
+      if (match.includes('<img') || match.includes('src=')) return match;
+      return `<img src="${proxyImg(match)}" class="chat-img" loading="lazy" referrerpolicy="no-referrer">`;
     }
   );
   // Links

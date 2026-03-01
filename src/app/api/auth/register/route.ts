@@ -1,9 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createUser, getUserByEmail, getUserByNickname, getRecentLoginAttempts, recordLoginAttempt } from '@/lib/store';
+import { createUser, getUserByEmail, getUserByNickname, getRecentLoginAttempts, recordLoginAttempt, getSettings } from '@/lib/store';
 import { hashPassword, signToken, validateNickname, getClientIp } from '@/lib/auth';
 
 export async function POST(req: NextRequest) {
   try {
+    // Check if registration is open
+    const settings = await getSettings();
+    if (!settings.registrationOpen) {
+      return NextResponse.json({ error: '注册已关闭，请联系管理员' }, { status: 403 });
+    }
+
     const ip = getClientIp(req);
     // Rate limit registration too
     const attempts = await getRecentLoginAttempts(ip, 15);

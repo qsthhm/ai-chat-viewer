@@ -1,47 +1,96 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Navbar from '@/components/Navbar';
+import { useAuth } from '@/components/AuthProvider';
+import { useToast } from '@/components/Toast';
 
 interface ColChat { id:string; title:string; source:string; createdAt:string; }
-interface ColData { name:string; description:string; userNickname:string; chats:ColChat[]; }
+interface ColData { id:string; userId:string; name:string; description:string; userNickname:string; chats:ColChat[]; }
 
 export default function SharedCollectionPage() {
   const params = useParams();
+  const router = useRouter();
   const shareId = params.id as string;
+  const { user } = useAuth();
+  const { show: toast } = useToast();
   const [data, setData] = useState<ColData|null>(null);
   const [notFound, setNotFound] = useState(false);
+  const [needPasscode, setNeedPasscode] = useState(false);
+  const [passName, setPassName] = useState('');
+  const [passcode, setPasscode] = useState('');
+  const [passError, setPassError] = useState('');
 
-  useEffect(() => {
-    fetch(`/api/collections/public/${shareId}`).then(async r => {
-      if (!r.ok) { setNotFound(true); return; }
+  const fetchCol = (code?: string) => {
+    const url = code ? `/api/collections/public/${shareId}?passcode=${code}` : `/api/collections/public/${shareId}`;
+    fetch(url).then(async r => {
       const d = await r.json();
+      if (r.status === 404) { setNotFound(true); return; }
+      if (d.needPasscode) { setNeedPasscode(true); setPassName(d.collection?.name||''); return; }
+      if (!r.ok && code) { setPassError('口令不正确'); return; }
+      if (!r.ok) { setNotFound(true); return; }
+      setNeedPasscode(false);
       setData(d.collection);
     }).catch(() => setNotFound(true));
-  }, [shareId]);
+  };
+
+  useEffect(() => { fetchCol(); }, [shareId]);
+
+  const isOwner = user && data && (user.id === data.userId || user.role === 'admin');
+
+  if (needPasscode) return (
+    <div className="min-h-dvh flex items-center justify-center p-4 bg-surface-50">
+      <div className="max-w-xs w-full text-center">
+        <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-brand-500 to-brand-300 flex items-center justify-center mx-auto mb-5 shadow-lg">
+          <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+        </div>
+        <h2 className="font-serif font-semibold text-lg mb-1">{passName || '受保护的集'}</h2>
+        <p className="text-sm text-surface-400 mb-6">请输入4位口令查看</p>
+        <input value={passcode} onChange={e=>setPasscode(e.target.value.replace(/[^a-zA-Z0-9]/g,'').slice(0,4))} placeholder="输入口令" maxLength={4}
+          className="w-full px-4 py-3 rounded-xl border border-surface-200 focus:border-brand-400 outline-none text-center text-lg font-mono tracking-[0.3em] mb-3"
+          onKeyDown={e=>{if(e.key==='Enter'&&passcode.length===4){setPassError('');fetchCol(passcode);}}}/>
+        {passError && <p className="text-red-500 text-xs mb-3">{passError}</p>}
+        <button onClick={()=>{setPassError('');fetchCol(passcode);}} disabled={passcode.length!==4}
+          className="w-full py-2.5 rounded-xl bg-brand-500 text-white text-sm font-semibold hover:bg-brand-600 disabled:opacity-40 shadow-sm">确认</button>
+        <Link href="/" className="block mt-4 text-sm text-surface-400 hover:text-brand-500">返回首页</Link>
+      </div>
+    </div>
+  );
 
   if (notFound) return (
-    <div className="min-h-dvh flex items-center justify-center p-4">
-      <div className="text-center"><h1 className="font-serif text-2xl font-semibold mb-2">集不存在</h1><p className="text-surface-400 text-sm mb-5">该链接可能已失效</p><Link href="/" className="px-5 py-2.5 rounded-xl bg-brand-500 text-white text-sm font-semibold">返回首页</Link></div>
-    </div>
+    <div className="min-h-dvh flex items-center justify-center p-4"><div className="text-center"><h1 className="font-serif text-2xl font-semibold mb-2">集不存在</h1><p className="text-surface-400 text-sm mb-5">该链接可能已失效</p><Link href="/" className="px-5 py-2.5 rounded-xl bg-brand-500 text-white text-sm font-semibold">返回首页</Link></div></div>
   );
   if (!data) return <div className="min-h-dvh flex items-center justify-center"><div className="w-8 h-8 border-2 border-brand-200 border-t-brand-500 rounded-full animate-spin"/></div>;
 
   return (
     <div className="min-h-dvh"><Navbar/>
       <div className="max-w-3xl mx-auto px-4 sm:px-6 pt-8 pb-20">
-        <div className="text-center mb-2 text-xs text-surface-400">由 <strong className="text-surface-600">{data.userNickname}</strong> 分享</div>
-        <h1 className="font-serif text-xl sm:text-2xl font-semibold text-center mb-2">{data.name}</h1>
-        {data.description && <p className="text-sm text-surface-500 text-center mb-8">{data.description}</p>}
-        <div className="space-y-2">
-          {data.chats.map(c=>(
-            <Link key={c.id} href={`/c/${c.id}`} className="block p-4 rounded-xl border border-surface-200 bg-white hover:border-brand-300 hover:shadow-sm transition-all">
-              <p className="font-semibold text-sm text-surface-800">{c.title}</p>
-              <p className="text-xs text-surface-400 mt-1">{new Date(c.createdAt).toLocaleDateString('zh-CN')}</p>
-            </Link>
-          ))}
+        <div className="flex items-center justify-between mb-2">
+          <div className="text-xs text-surface-400">由 <strong className="text-surface-600">{data.userNickname}</strong> 分享</div>
+          {isOwner && <Link href={`/dashboard/collections/${data.id}`} className="px-3 py-1.5 rounded-lg border border-surface-200 text-surface-500 hover:border-brand-400 hover:text-brand-500 text-xs font-medium transition-colors">编辑</Link>}
         </div>
+        <h1 className="font-serif text-xl sm:text-2xl font-semibold mb-2">{data.name}</h1>
+        {data.description && <p className="text-sm text-surface-500 mb-8">{data.description}</p>}
+
+        {data.chats.length === 0 ? (
+          /* Empty state (#4) */
+          <div className="text-center py-20">
+            <div className="w-16 h-16 rounded-2xl bg-surface-100 flex items-center justify-center mx-auto mb-4">
+              <svg className="w-7 h-7 text-surface-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+            </div>
+            <p className="text-surface-400 text-sm">这个集还没有添加对话</p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {data.chats.map(c=>(
+              <Link key={c.id} href={`/c/${c.id}`} className="block p-4 rounded-xl border border-surface-200 bg-white hover:border-brand-300 hover:shadow-sm transition-all">
+                <p className="font-semibold text-sm text-surface-800">{c.title}</p>
+                <p className="text-xs text-surface-400 mt-1">{new Date(c.createdAt).toLocaleDateString('zh-CN')}</p>
+              </Link>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

@@ -21,7 +21,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
   }
 
   return NextResponse.json({ success: true, chat: {
-    id: chat.id, title: chat.title, description: chat.description,
+    id: chat.id, userId: chat.userId, title: chat.title, description: chat.description,
     markdown: chat.markdown, source: chat.source,
     userNickname: chat.userNickname, plazaStatus: chat.plazaStatus, createdAt: chat.createdAt,
     hasPasscode: !!chat.passcode,

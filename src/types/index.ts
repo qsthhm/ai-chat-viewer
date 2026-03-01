@@ -33,6 +33,9 @@ export interface Collection {
   chatIds: string[];
   isPublic: boolean;
   shareId: string;
+  plazaStatus: 'none' | 'pending' | 'approved' | 'rejected';
+  rejectReason: string;
+  passcode: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -62,4 +65,10 @@ export interface JwtPayload {
   userId: string;
   email: string;
   role: 'user' | 'admin';
+}
+
+export interface SiteSettings {
+  registrationOpen: boolean;
+  reviewChats: boolean;
+  reviewCollections: boolean;
 }

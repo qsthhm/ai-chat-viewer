@@ -1,17 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/auth';
-import { updateChat } from '@/lib/store';
+import { updateChat, updateCollection } from '@/lib/store';
 
 export async function POST(req: NextRequest) {
   try {
     requireAdmin(req);
-    const { chatId, reason } = await req.json();
-    if (!chatId) return NextResponse.json({ error: '缺少chatId' }, { status: 400 });
-    const updated = await updateChat(chatId, {
-      plazaStatus: 'rejected',
-      rejectReason: reason || '不符合广场内容标准',
-    });
-    if (!updated) return NextResponse.json({ error: '对话不存在' }, { status: 404 });
+    const { chatId, collectionId, reason } = await req.json();
+    const r = reason || '不符合广场内容标准';
+    if (chatId) {
+      await updateChat(chatId, { plazaStatus: 'rejected', rejectReason: r });
+    } else if (collectionId) {
+      await updateCollection(collectionId, { plazaStatus: 'rejected', rejectReason: r });
+    } else {
+      return NextResponse.json({ error: '缺少ID' }, { status: 400 });
+    }
     return NextResponse.json({ success: true });
   } catch (e: unknown) {
     if (e instanceof Error && e.message === 'UNAUTHORIZED') return NextResponse.json({ error: '请先登录' }, { status: 401 });

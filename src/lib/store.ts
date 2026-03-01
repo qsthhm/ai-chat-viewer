@@ -187,6 +187,8 @@ export async function createCollection(col: Omit<Collection, 'id' | 'createdAt' 
     id: full.id, user_id: full.userId, user_nickname: full.userNickname,
     name: full.name, description: full.description, chat_ids: full.chatIds,
     is_public: full.isPublic, share_id: full.shareId || '',
+    plaza_status: full.plazaStatus || 'none', reject_reason: full.rejectReason || '',
+    passcode: full.passcode || '',
     created_at: full.createdAt, updated_at: full.updatedAt,
   });
   if (error) throw new Error('创建集失败: ' + error.message);
@@ -213,6 +215,9 @@ export async function updateCollection(id: string, updates: Partial<Collection>)
   if (updates.chatIds !== undefined) row.chat_ids = updates.chatIds;
   if (updates.isPublic !== undefined) row.is_public = updates.isPublic;
   if (updates.shareId !== undefined) row.share_id = updates.shareId;
+  if (updates.plazaStatus !== undefined) row.plaza_status = updates.plazaStatus;
+  if (updates.rejectReason !== undefined) row.reject_reason = updates.rejectReason;
+  if (updates.passcode !== undefined) row.passcode = updates.passcode;
   const { data, error } = await sb.from('collections').update(row).eq('id', id).select('*').maybeSingle();
   if (error || !data) return undefined;
   return mapCollection(data);
@@ -240,9 +245,48 @@ function mapCollection(row: Record<string, unknown>): Collection {
   return {
     id: row.id as string, userId: row.user_id as string,
     userNickname: row.user_nickname as string, name: row.name as string,
-    description: row.description as string, chatIds: (row.chat_ids || []) as string[],
+    description: (row.description as string) || '', chatIds: (row.chat_ids || []) as string[],
     isPublic: row.is_public as boolean, shareId: (row.share_id as string) || '',
+    plazaStatus: (row.plaza_status as Collection['plazaStatus']) || 'none',
+    rejectReason: (row.reject_reason as string) || '',
+    passcode: (row.passcode as string) || '',
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string,
   };
+}
+
+// ==================== Settings ====================
+
+import { SiteSettings } from '@/types';
+
+export async function getSettings(): Promise<SiteSettings> {
+  const sb = getSupabase();
+  const { data } = await sb.from('settings').select('*');
+  const map: Record<string,string> = {};
+  (data || []).forEach((r: any) => { map[r.key] = r.value; });
+  return {
+    registrationOpen: map.registration_open !== 'false',
+    reviewChats: map.review_chats !== 'false',
+    reviewCollections: map.review_collections !== 'false',
+  };
+}
+
+export async function updateSettings(updates: Partial<SiteSettings>): Promise<void> {
+  const sb = getSupabase();
+  if (updates.registrationOpen !== undefined) {
+    await sb.from('settings').upsert({ key: 'registration_open', value: String(updates.registrationOpen) });
+  }
+  if (updates.reviewChats !== undefined) {
+    await sb.from('settings').upsert({ key: 'review_chats', value: String(updates.reviewChats) });
+  }
+  if (updates.reviewCollections !== undefined) {
+    await sb.from('settings').upsert({ key: 'review_collections', value: String(updates.reviewCollections) });
+  }
+}
+
+// Get plaza collections
+export async function getPlazaCollections(status: string = 'approved'): Promise<Collection[]> {
+  const sb = getSupabase();
+  const { data } = await sb.from('collections').select('*').eq('plaza_status', status).order('created_at', { ascending: false });
+  return (data || []).map(mapCollection);
 }
