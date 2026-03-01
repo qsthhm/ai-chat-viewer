@@ -92,6 +92,17 @@ export default function ChatRenderer({ data }: { data: ParsedChat }) {
         .img-block { margin: 0.5rem 0; }
         .img-block .chat-img { max-width: min(100%, 520px); }
         .bub-user .chat-img { max-width: min(100%, 300px); border-radius: 12px; }
+        /* Gemini auth-required image card */
+        .gimg-card { display: flex; align-items: center; gap: 0.75rem; padding: 0.85rem 1rem; margin: 0.5rem 0; border-radius: 12px; border: 1px solid #E7E5E4; background: #FAFAF9; text-decoration: none !important; transition: all 0.15s ease; max-width: min(100%, 520px); cursor: pointer; }
+        .gimg-card:hover { border-color: #D4603A; background: #FDF8F6; transform: translateY(-1px); box-shadow: 0 2px 8px rgba(212,96,58,0.08); }
+        .gimg-icon { flex-shrink: 0; width: 40px; height: 40px; border-radius: 10px; background: #F0EEEC; display: flex; align-items: center; justify-content: center; color: #A8A29E; }
+        .gimg-card:hover .gimg-icon { background: #FDEEE8; color: #D4603A; }
+        .gimg-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0.15rem; }
+        .gimg-title { font-size: 0.82rem; font-weight: 600; color: #44403C; }
+        .gimg-sub { font-size: 0.72rem; color: #A8A29E; }
+        .gimg-card:hover .gimg-title { color: #D4603A; }
+        .gimg-arrow { flex-shrink: 0; color: #D6D3D1; transition: color 0.15s; }
+        .gimg-card:hover .gimg-arrow { color: #D4603A; }
       `}</style>
       <div ref={bodyRef} className="max-w-[780px] mx-auto px-4 sm:px-6 py-5 pb-16" />
     </>
