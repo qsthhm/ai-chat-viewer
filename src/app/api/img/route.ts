@@ -1,19 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
+export const fetchCache = 'force-no-store';
+
+// Increase timeout for Netlify serverless functions
+export const maxDuration = 15;
 
 /**
- * Image proxy for Google CDN images that block direct access.
+ * Image proxy for Google CDN images.
  * Usage: /api/img?url=https://lh3.googleusercontent.com/...
  *
- * Gemini exports often contain URLs like:
- *   https://lh3.googleusercontent.com/gg/...  (generated content, may expire)
- *   https://lh3.googleusercontent.com/a/...   (profile pics, usually stable)
- *
- * We try multiple strategies to fetch the image.
+ * Debug: /api/img?url=...&debug=1 returns JSON diagnostics instead of image
  */
 export async function GET(req: NextRequest) {
   const url = req.nextUrl.searchParams.get('url');
+  const debug = req.nextUrl.searchParams.get('debug') === '1';
+
   if (!url) return new NextResponse('Missing url', { status: 400 });
 
   // Only proxy Google image CDN
@@ -26,72 +28,99 @@ export async function GET(req: NextRequest) {
     return new NextResponse('Invalid url', { status: 400 });
   }
 
-  // Try multiple User-Agent / header combos to get past Google's restrictions
-  const strategies: Array<{ headers: Record<string, string> }> = [
-    {
-      // Strategy 1: Full Chrome browser headers with Gemini referer
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
-        'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.9',
-        'Referer': 'https://gemini.google.com/',
-        'Sec-Fetch-Dest': 'image',
-        'Sec-Fetch-Mode': 'no-cors',
-        'Sec-Fetch-Site': 'cross-site',
-        'Sec-Ch-Ua': '"Chromium";v="125", "Not_A Brand";v="99", "Google Chrome";v="125"',
-        'Sec-Ch-Ua-Mobile': '?0',
-        'Sec-Ch-Ua-Platform': '"Windows"',
-      },
-    },
-    {
-      // Strategy 2: Googlebot (sometimes whitelisted)
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)',
-        'Accept': 'image/*,*/*;q=0.8',
-      },
-    },
-    {
-      // Strategy 3: Safari with minimal headers
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15',
-        'Accept': '*/*',
-      },
-    },
-  ];
+  const logs: string[] = [];
+  const log = (msg: string) => { logs.push(msg); console.log(`[img-proxy] ${msg}`); };
 
-  for (const strategy of strategies) {
-    try {
-      const resp = await fetch(url, {
-        headers: strategy.headers,
-        redirect: 'follow',
+  log(`Proxying: ${url.slice(0, 120)}...`);
+
+  // Headers that mimic a real browser
+  const browserHeaders: Record<string, string> = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+    'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
+    'Accept-Language': 'en-US,en;q=0.9',
+    'Accept-Encoding': 'identity', // Don't compress - simpler to handle
+    'Connection': 'keep-alive',
+  };
+
+  try {
+    // Use AbortController for timeout
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 12000);
+
+    const resp = await fetch(url, {
+      headers: browserHeaders,
+      redirect: 'follow',
+      signal: controller.signal,
+      // Explicitly tell Next.js NOT to cache this fetch
+      cache: 'no-store',
+    });
+
+    clearTimeout(timeout);
+
+    log(`Status: ${resp.status} ${resp.statusText}`);
+    log(`Content-Type: ${resp.headers.get('content-type')}`);
+    log(`Content-Length: ${resp.headers.get('content-length')}`);
+
+    if (debug) {
+      const headers: Record<string, string> = {};
+      resp.headers.forEach((v, k) => { headers[k] = v; });
+      return NextResponse.json({
+        url: url.slice(0, 150),
+        status: resp.status,
+        statusText: resp.statusText,
+        headers,
+        logs,
       });
-
-      if (resp.ok) {
-        const ct = resp.headers.get('content-type') || 'image/jpeg';
-        const body = await resp.arrayBuffer();
-
-        // Verify we actually got image data (not an HTML error page)
-        if (body.byteLength < 100 && ct.includes('text/html')) {
-          continue; // Try next strategy
-        }
-
-        return new NextResponse(body, {
-          headers: {
-            'Content-Type': ct,
-            'Cache-Control': 'public, max-age=604800, immutable',
-            'Access-Control-Allow-Origin': '*',
-          },
-        });
-      }
-
-      // 403/404 likely means expired or restricted — try next strategy
-      continue;
-    } catch {
-      continue;
     }
-  }
 
-  // All strategies failed — return a placeholder SVG so the page doesn't show broken images
+    if (!resp.ok) {
+      log(`Upstream returned ${resp.status}, trying to read body for details...`);
+      const errorBody = await resp.text().catch(() => '(unreadable)');
+      log(`Error body (first 200 chars): ${errorBody.slice(0, 200)}`);
+
+      return returnPlaceholder(`Upstream ${resp.status}`);
+    }
+
+    const ct = resp.headers.get('content-type') || 'image/jpeg';
+
+    // If Google returned an HTML page instead of an image, it's likely an error/login page
+    if (ct.includes('text/html')) {
+      log('Got HTML instead of image — likely auth required');
+      return returnPlaceholder('Auth required');
+    }
+
+    const body = await resp.arrayBuffer();
+    log(`Got ${body.byteLength} bytes of ${ct}`);
+
+    if (body.byteLength === 0) {
+      log('Empty response body');
+      return returnPlaceholder('Empty response');
+    }
+
+    return new NextResponse(body, {
+      headers: {
+        'Content-Type': ct,
+        'Cache-Control': 'public, max-age=604800, immutable',
+        'Access-Control-Allow-Origin': '*',
+        'X-Proxy-Status': 'ok',
+      },
+    });
+
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    log(`Fetch error: ${msg}`);
+
+    if (debug) {
+      return NextResponse.json({ error: msg, logs });
+    }
+
+    return returnPlaceholder(msg);
+  }
+}
+
+function returnPlaceholder(reason: string) {
+  console.log(`[img-proxy] Returning placeholder: ${reason}`);
+
   const placeholderSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="400" height="260" viewBox="0 0 400 260">
   <rect width="400" height="260" rx="12" fill="#F5F3F0"/>
   <g transform="translate(200,110)" text-anchor="middle">
@@ -100,17 +129,23 @@ export async function GET(req: NextRequest) {
       <circle cx="8.5" cy="8.5" r="1.5"/>
       <path d="M21 15l-5-5L5 21"/>
     </svg>
-    <text y="28" font-family="system-ui,sans-serif" font-size="13" fill="#A8A29E">图片已过期或无法加载</text>
-    <text y="48" font-family="system-ui,sans-serif" font-size="11" fill="#C4C0BC">Gemini 导出的图片链接可能已失效</text>
+    <text y="28" font-family="system-ui,sans-serif" font-size="13" fill="#A8A29E">图片无法加载</text>
+    <text y="48" font-family="system-ui,sans-serif" font-size="11" fill="#C4C0BC">${escXml(reason)}</text>
   </g>
 </svg>`;
 
   return new NextResponse(placeholderSvg, {
-    status: 200, // Return 200 so the <img> tag doesn't show broken image icon
+    status: 200,
     headers: {
       'Content-Type': 'image/svg+xml',
-      'Cache-Control': 'public, max-age=3600',
+      'Cache-Control': 'no-cache',
       'Access-Control-Allow-Origin': '*',
+      'X-Proxy-Status': 'placeholder',
+      'X-Proxy-Reason': reason,
     },
   });
+}
+
+function escXml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
