@@ -126,58 +126,11 @@ export default function HomePage() {
     toast('登录成功'); setShareOpen(true);
   };
 
-  // Try to inline Google images as data URIs before uploading.
-  // Due to CORS restrictions, this only works for public Google images.
-  // Auth-required images (most Gemini /gg/ paths) will fall through to
-  // the server-side proxy, which shows a friendly placeholder if it also fails.
-  const inlineGoogleImages = async (md: string): Promise<string> => {
-    const urlRegex = /https?:\/\/lh[0-9]*\.googleusercontent\.com\/[^\s<>")\]]+/g;
-    const urls = [...new Set(md.match(urlRegex) || [])];
-    if (urls.length === 0) return md;
-
-    const replacements = new Map<string, string>();
-
-    await Promise.all(urls.map(async (url) => {
-      try {
-        // Try fetching without credentials (works for public images)
-        const resp = await fetch(url);
-        if (!resp.ok) return;
-        const blob = await resp.blob();
-        if (!blob.type.startsWith('image/') || blob.size > 5 * 1024 * 1024) return;
-        const dataUrl = await new Promise<string>((resolve) => {
-          const reader = new FileReader();
-          reader.onloadend = () => resolve(reader.result as string);
-          reader.readAsDataURL(blob);
-        });
-        if (dataUrl && dataUrl.length > 100) {
-          replacements.set(url, dataUrl);
-        }
-      } catch { /* skip */ }
-    }));
-
-    if (replacements.size > 0) {
-      let result = md;
-      for (const [original, dataUrl] of replacements) {
-        result = result.split(original).join(dataUrl);
-      }
-      return result;
-    }
-    return md;
-  };
-
   const confirmShare = async () => {
     setSharing(true);
     try {
-      // Inline Google images before uploading so they don't break when shared
-      let mdToUpload = rawMd;
-      if (chatData?.source === 'gemini' && /lh[0-9]*\.googleusercontent\.com/.test(rawMd)) {
-        try {
-          mdToUpload = await inlineGoogleImages(rawMd);
-        } catch { /* proceed with original if inlining fails */ }
-      }
-
       const res = await fetch('/api/chats/share', { method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ markdown:mdToUpload, title:chatData?.title||'对话', source:chatData?.source||'unknown', description:shareDesc, publishToPlaza, passcode:sharePasscode||'' }) });
+        body: JSON.stringify({ markdown:rawMd, title:chatData?.title||'对话', source:chatData?.source||'unknown', description:shareDesc, publishToPlaza, passcode:sharePasscode||'' }) });
       const d = await res.json();
       if(!res.ok){ toast(d.error||'分享失败'); setSharing(false); return; }
       const url = `${location.origin}/c/${d.chat.id}`;
